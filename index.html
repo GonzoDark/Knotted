@@ -69,8 +69,10 @@
   #starsEarned{font-size:26px;letter-spacing:5px;min-height:32px;color:var(--gold);}
   #banner{position:fixed;top:22%;left:50%;transform:translateX(-50%) scale(.8);z-index:15;
     padding:12px 28px;border-radius:22px;font-weight:800;font-size:20px;letter-spacing:3px;
-    background:var(--card);border:1px solid var(--edge);backdrop-filter:blur(8px);
+    background:rgba(10,12,20,0.5);border:1px solid rgba(255,255,255,0.12);
     opacity:0;pointer-events:none;transition:opacity .35s,transform .35s;text-align:center;max-width:86vw;}
+  #banner.lite{font-size:14px;padding:7px 16px;letter-spacing:2px;top:15%;
+    background:rgba(10,12,20,0.35);border-color:rgba(255,255,255,0.08);}
   #banner small{display:block;font-weight:400;font-size:12px;color:var(--dim);letter-spacing:1px;margin-top:3px;}
   #banner.show{opacity:1;transform:translateX(-50%) scale(1);}
   #select,#shop,#themeScr,#slotsScr,#petScr,#compScr{justify-content:flex-start;overflow-y:auto;touch-action:pan-y;padding-top:calc(env(safe-area-inset-top,0px) + 18px);}
@@ -78,7 +80,8 @@
   .wardItem{border-radius:14px;padding:10px 6px;background:var(--card);border:2px solid var(--edge);
     color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:4px;font:inherit;}
   .wardItem:active{transform:scale(.95);}
-  .wardItem.worn{border-color:var(--gold);}
+  .wardItem.worn{border-color:var(--gold);background:rgba(255,209,102,0.14);
+    box-shadow:inset 0 0 12px rgba(255,209,102,.2);}
   .wardItem.cant{opacity:.55;}
   .wardItem .wnm{font-size:11px;font-weight:700;}
   .wardItem .wpr{font-size:11px;color:var(--gold);font-weight:800;}
@@ -137,6 +140,7 @@
   <div class="chip"><span id="worldName">MEADOW DAWN</span><br><b id="lvlLabel">Knot 1</b> <span id="leftLabel" style="color:var(--dim);font-size:12px;">· 3 cords</span></div>
   <div id="rightChips">
     <div class="chip" id="starChip">★ 0</div>
+    <div class="chip" id="heartChip" style="display:none;">❤️</div>
     <div class="chip" id="shieldChip">🛡 Shield ready</div>
   </div>
 </div>
@@ -167,6 +171,7 @@
   </div>
   <div class="rowbtns">
     <button class="ghostbtn" id="btnCompanion">🐾 Companion</button>
+    <button class="ghostbtn" id="btnDaily">📅 Daily</button>
     <button class="ghostbtn" id="btnTheme">🎨 Theme</button>
   </div>
   <div style="display:flex;gap:8px;margin-top:6px;">
@@ -359,6 +364,16 @@ function parallelClose(a,b,c,d,tol){
 const DIRI4=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
 const DIRI8=DIRI4.concat([{x:1,y:1},{x:1,y:-1},{x:-1,y:1},{x:-1,y:-1}]);
 
+const ENDLESS_MODS=[
+ {key:'phantom',name:'PHANTOM VEIL'},
+ {key:'nofore',name:'NO FORESIGHT'},
+ {key:'chains',name:'DOUBLE LOCKS'},
+ {key:'freeze',name:'DEEP FREEZE'},
+ {key:'blackout',name:'BLACKOUT'},
+ {key:'swarm',name:'SWARM'},
+ {key:'hydra',name:'HYDRA'},
+];
+
 function levelParams(L){
   const w=Math.ceil(L/10);
   const e=Math.max(0,L-100);
@@ -369,13 +384,22 @@ function levelParams(L){
   const themeIdx=(w-1)%10;
   const nStars = L%10===0?3 : (1+((L*7)%3===0?1:0));
   const shield = w>=3 && (L%10)%3===1;
-  const ghosts = (themeIdx===3||themeIdx===9)?Math.min(0.7,0.45+e*0.001):0;
-  const twoHead = w>=6 ? Math.min(3,(w>=9?2:1)+Math.floor(e/60)) : 0;
-  const locks = w>=5 ? Math.min(3,(w>=8?2:1)+Math.floor(e/40)) : 0;
-  const frozen = w>=7 ? Math.min(0.4,(themeIdx===7?0.3:0.2)+e*0.001) : 0;
+  let ghosts = (themeIdx===3||themeIdx===9)?Math.min(0.7,0.45+e*0.001):0;
+  let twoHead = w>=6 ? Math.min(3,(w>=9?2:1)+Math.floor(e/60)) : 0;
+  let locks = w>=5 ? Math.min(3,(w>=8?2:1)+Math.floor(e/40)) : 0;
+  let frozen = w>=7 ? Math.min(0.4,(themeIdx===7?0.3:0.2)+e*0.001) : 0;
+  let mod=null;
+  if(L>100){
+    mod=ENDLESS_MODS[(w*13+5)%ENDLESS_MODS.length];
+    if(mod.key==='phantom')ghosts=1;
+    else if(mod.key==='chains')locks=Math.min(4,locks+2);
+    else if(mod.key==='freeze')frozen=0.55;
+    else if(mod.key==='swarm')n=Math.min(16,n+2);
+    else if(mod.key==='hydra')twoHead=Math.min(4,twoHead+2);
+  }
   const maxFree = L<=6?99 : L<=12?4 : L<=25?3 : 2;
   const minScore = L>30?2:1;
-  return {w,n,segMax,diag,themeIdx,nStars,shield,ghosts,twoHead,locks,frozen,maxFree,minScore};
+  return {w,n,segMax,diag,themeIdx,nStars,shield,ghosts,twoHead,locks,frozen,maxFree,minScore,mod};
 }
 
 function rayEndPt(pt,dir,far){return {x:pt.x+dir.x*far,y:pt.y+dir.y*far};}
@@ -562,13 +586,14 @@ function initialFree(lines,far){
   return f;
 }
 
-function genLevel(L,W,H){
+function genLevel(L,W,H,seedBase){
   const P=levelParams(L);
   const far=2*Math.hypot(W,H);
   const cell=cellFor(W,H);
+  const base=(seedBase===undefined?L:seedBase)>>>0;
   let bestPick=null,bestFree=Infinity;
   for(let outer=0;outer<16;outer++){
-    const rng=mulberry32((L*2654435761 ^ (outer*977+13))>>>0);
+    const rng=mulberry32((Math.imul(base,2654435761) ^ (outer*977+13))>>>0);
     const n=Math.max(3,P.n-(outer>6?outer-6:0));
     const lines=tryBuild(n,P,rng,W,H,far,cell);
     if(!lines)continue;
@@ -652,6 +677,7 @@ function runTests(){
   const fr=[1,5,10,20,30,50,75,100,150,300].map(L=>{
     const g=genLevel(L,390,760);return L+':'+initialFree(g.lines,g.far);});
   console.log('initial free cords → '+fr.join('  '));
+  console.log('endless remix → '+[101,120,150,200,300,500].map(L=>L+':'+((levelParams(L).mod||{key:'-'}).key)).join('  '));
   // rush invariant: with spawn rule, the newest cord on the board is always free
   const rng=mulberry32(4242);
   const far=2*Math.hypot(390,760), cell=cellFor(390,760);
@@ -698,11 +724,13 @@ const MECH={
  w7:{icon:"🧊",name:"Frozen cords",desc:"Iced cords need a tap to crack the ice first, then a second tap to fire. Cracking is always safe."},
  w8:{icon:"🌪",name:"Dense knots",desc:"More cords, more locks, tighter tangles. Trace carefully before you tap."},
  w10:{icon:"🕳",name:"The Void",desc:"Everything you've learned, in the dark. Ten final knots… or are they?"},
- a1:{icon:"👁",name:"Foresight unlocked",desc:"Press and HOLD a cord to preview its exit path — green means clear, red shows the blocker. Costs ★ per use."},
+ a1:{icon:"👁",name:"Foresight unlocked",desc:"Tap 👁 to arm it, then tap any cord to preview its exit path — or just press & hold a cord. Green means clear, red shows the blocker. Costs ★ per use."},
  a2:{icon:"📡",name:"Radar unlocked",desc:"Tap 📡 to briefly reveal every cord that's currently free to fire. Costs ★ per use."},
  a3:{icon:"🚀",name:"Phase Shot unlocked",desc:"Tap 🚀 then tap any cord to fire it straight through everything — locks, ice, blockers. Costs ★ per use."},
  a4:{icon:"🌊",name:"Cascade unlocked",desc:"Tap 🌊 to auto-fire free cords in a chain. Costs ★ per use. Upgrade it in the shop."},
  rush:{icon:"⚡",name:"Rush mode",desc:"Cords keep spawning. Don't let the board hit 16 — every wrong tap spawns 2 more! Clear cords to score ★ and survive the waves."},
+ daily:{icon:"📅",name:"Daily Knot",desc:"One special knot per day. Clear it to build a 🔥 streak — the longer the streak, the bigger the ★ reward. Come back tomorrow!"},
+ endless:{icon:"♾️",name:"The Endless",desc:"Knots beyond 100 grow without limit — and every world carries a remix modifier: phantom veils, blackouts, swarms, double locks and worse."},
  endless:{icon:"♾️",name:"The Endless",desc:"Knots beyond 100 grow without limit — denser tangles, extra locks, more phantoms and ice. Worlds loop with new fury."},
 };
 const ABIL=[
@@ -727,6 +755,9 @@ const SHOP=[
  {key:'grid',icon:'⌗',name:'Gridlines',req:1,
   base:'The alignment grid is hidden. Cords still snap to it — you just can\'t see it.',
   tiers:[{p:40,d:'Reveal the grid, plus an in-game toggle button'}]},
+ {key:'heart',icon:'❤️',name:'Heartstrings',req:1,
+  base:'One snag ends the knot.',
+  tiers:[{p:60,d:'Start every knot with 2 hearts'},{p:130,d:'3 hearts — snags sting, not kill'}]},
  {key:'guard',icon:'🛡',name:'Guardian',req:1,
   base:'Passive. No starting shield.',
   tiers:[{p:60,d:'Start every boss knot with a shield'},{p:120,d:'Start every knot with a shield'}]},
@@ -758,18 +789,18 @@ function curSkin(){return SKINS[save.skin]||SKINS.loom;}
 function cordCol(i){const sk=curSkin();
   return sk.multi?THEMES[themeIdxNow%10].cords[i]:sk.cords[i];}
 const PETS={
- cat:{name:'Miso',emoji:'🐱',body:'#e8a86b',belly:'#f7dcbb',ear:'tri',tail:'curve',flavor:'Naps professionally. Judges your taps.'},
- dog:{name:'Biscuit',emoji:'🐶',body:'#c99a6a',belly:'#efd9b8',ear:'flop',tail:'wag',flavor:'Believes in you. Always has.'},
- bunny:{name:'Clover',emoji:'🐰',body:'#cfd4dd',belly:'#f0f2f6',ear:'long',tail:'puff',flavor:'Expert hopper, part-time lucky charm.'},
- fox:{name:'Ember',emoji:'🦊',body:'#e6793a',belly:'#f6e3cf',ear:'tri',tail:'fluff',flavor:'Sly, swift, suspiciously good at puzzles.'},
- dragon:{name:'Pippin',emoji:'🐲',body:'#6fc48a',belly:'#c9eecb',ear:'horn',tail:'spade',flavor:'Tiny. Mighty. Hoards your stars.'},
+ cat:{name:'Miso',emoji:'🐱',body:'#e8a86b',belly:'#f7dcbb',ear:'tri',tail:'curve',acY:0,flavor:'Naps professionally. Judges your taps.'},
+ dog:{name:'Biscuit',emoji:'🐶',body:'#c99a6a',belly:'#efd9b8',ear:'flop',tail:'wag',acY:2,flavor:'Believes in you. Always has.'},
+ bunny:{name:'Clover',emoji:'🐰',body:'#cfd4dd',belly:'#f0f2f6',ear:'long',tail:'puff',acY:3,flavor:'Expert hopper, part-time lucky charm.'},
+ fox:{name:'Ember',emoji:'🦊',body:'#e6793a',belly:'#f6e3cf',ear:'tri',tail:'fluff',acY:0,flavor:'Sly, swift, suspiciously good at puzzles.'},
+ dragon:{name:'Pippin',emoji:'🐲',body:'#6fc48a',belly:'#c9eecb',ear:'horn',tail:'spade',acY:2,flavor:'Tiny. Mighty. Hoards your stars.'},
 };
 const ACC={
- acc_bow:{e:'🎀',dx:9,dy:-22,s:13,zone:'head'},
- acc_scarf:{e:'🧣',dx:0,dy:-1,s:14,zone:'neck'},
- acc_hat:{e:'🎩',dx:0,dy:-24,s:15,zone:'head'},
- acc_shade:{e:'🕶',dx:0,dy:-3,s:12,zone:'eyes'},
- acc_crown:{e:'👑',dx:0,dy:-24,s:14,zone:'head'},
+ acc_bow:{e:'🎀',zone:'head'},
+ acc_scarf:{e:'🧣',zone:'neck'},
+ acc_hat:{e:'🎩',zone:'head'},
+ acc_shade:{e:'🕶',zone:'eyes'},
+ acc_crown:{e:'👑',zone:'head'},
 };
 const WARDROBE=[
  {key:'acc_bow',icon:'🎀',name:'Silk Bow',price:25},
@@ -788,6 +819,13 @@ fit();
 const $=id=>document.getElementById(id);
 const scr={title:$('titleScr'),dead:$('deadScr'),clear:$('clearScr'),rushov:$('rushScr'),victory:$('victoryScr'),select:$('select'),shop:$('shop'),theme:$('themeScr'),looms:$('slotsScr'),comp:$('compScr'),pause:$('pauseScr'),pets:$('petScr'),reset:$('resetScr'),mech:$('mech')};
 const pcx=$('petCv').getContext('2d');
+(function(){const c=$('petCv'),d=Math.min(2,devicePixelRatio||1);
+  c.width=220*d;c.height=150*d;c.style.width='220px';c.style.height='150px';
+  pcx.setTransform(d,0,0,d,0,0);})();
+function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function todayStr(){return ymd(new Date());}
+function yestStr(){return ymd(new Date(Date.now()-86400000));}
+function dayHash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
 function show(name){for(const k in scr)scr[k].classList.toggle('show',k===name);}
 function hideAll(){show('none');paused=false;}
 
@@ -802,7 +840,7 @@ const store={
     try{localStorage.setItem(k,v);}catch(e){}
   }
 };
-function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,pet:null,petAcc:{owned:{},worn:{}},music:true,sfx:true,seen:{},hinted:false,victory:false};}
+function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,pet:null,petAcc:{owned:{},worn:{}},lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
 let save=freshSave();
 let slots={list:[],active:null,info:{}};
 function migrateSave(src){
@@ -831,7 +869,8 @@ function slotSummary(){
   const ups=Object.values(save.shop).reduce((a,b)=>a+b,0)
     +Object.keys(save.petAcc.owned).length
     +Math.max(0,Object.keys(save.skinsOwned).length-1);
-  return {pet:save.pet,acc:Object.values(save.petAcc.worn||{}).filter(Boolean),knot:save.unlocked,wallet:save.wallet,ups};
+  const alive=save.daily&&(save.daily.last===todayStr()||save.daily.last===yestStr());
+  return {pet:save.pet,acc:Object.values(save.petAcc.worn||{}).filter(Boolean),knot:save.unlocked,wallet:save.wallet,ups,streak:alive?save.daily.streak:0};
 }
 function saveMeta(){
   if(slots.active!=null)slots.info[slots.active]=slotSummary();
@@ -984,7 +1023,8 @@ function drawParts(){
 let curLevel=0,lines=[],far=0,cell=40,keysOwned=new Set(),shield=false,starsGot=0,starTotalInLevel=0;
 let state='title'; // title | play | dying | cleared | rush | rushover
 let anims=[],deathInfo=null,deaths=0,combo=0,comboT=0,timeNow=0;
-let preview=null,radarUntil=0,phaseArmed=false,cascLeft=0;
+let preview=null,radarUntil=0,phaseArmed=false,foreArmed=false,cascLeft=0;
+let hearts=1,dailyMode=false,curMod=null;
 let rush=null; // {cleared,wave,spawnT,interval,starsRun,snags,idc,rng}
 
 function curTheme(){return THEMES[themeIdxNow%10];}
@@ -1013,7 +1053,7 @@ function windowPts(pts,A,a,b){
 }
 
 function abilUnlocked(a){return save.unlocked>=a.unlockAt;}
-function gridVisible(){return shopLvl('grid')>=1 && save.gridOn!==false;}
+function gridVisible(){return shopLvl('grid')>=1 && save.gridOn!==false && !(curMod&&curMod.key==='blackout');}
 function refreshGridBtn(){
   const owned=shopLvl('grid')>=1;
   $('btnGrid').style.display=owned?'flex':'none';
@@ -1029,8 +1069,9 @@ function refreshAbilBar(){
     if(un){any=true;
       const c=abilCost(a.key);
       bd.textContent=c+'★';
-      btn.classList.toggle('off',save.wallet<c&&!(a.key==='phase'&&phaseArmed));
-      btn.classList.toggle('armed',a.key==='phase'&&phaseArmed);
+      const armed=(a.key==='phase'&&phaseArmed)||(a.key==='fore'&&foreArmed);
+      btn.classList.toggle('off',save.wallet<c&&!armed);
+      btn.classList.toggle('armed',armed);
     }
   }
   $('abilBar').style.display=(any&&inGame)?'flex':'none';
@@ -1054,18 +1095,21 @@ function loadLevel(L,fresh){
   shield=(shopLvl('guard')>=2)||(shopLvl('guard')>=1&&L%10===0);
   starTotalInLevel=lines.filter(x=>x.star).length;
   anims=[];deathInfo=null;state='play';rush=null;
-  preview=null;radarUntil=0;phaseArmed=false;cascLeft=0;
+  dailyMode=false;curMod=g.P.mod||null;
+  hearts=1+shopLvl('heart');
+  preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
   if(fresh)deaths=0;
   petted=false;
+  save.lastKnot=L;persist();
   lines.forEach(l=>{l.A=arcs(l.pts);l.gone=false;l.jig=0;l.born=0;});
   $('hud').style.display='flex';$('gameBtns').style.display='flex';
-  $('worldName').textContent=worldLabel(L).toUpperCase();
+  $('worldName').textContent=worldLabel(L).toUpperCase()+(curMod?' · '+curMod.name:'');
   $('lvlLabel').textContent='Knot '+L;
   updateHud();refreshAbilBar();refreshGridBtn();
   hideAll();
   $('hintBar').style.display=(L<=2&&!save.hinted)?'block':'none';
   const w=Math.ceil(L/10);
-  if(L%10===1&&L>1)bannerMsg('WORLD '+w,worldLabel(L));
+  if(L%10===1&&L>1)bannerMsg('WORLD '+w,worldLabel(L)+(curMod?' · '+curMod.name:''));
   else if(L%10===0)bannerMsg('BOSS KNOT','untangle the golden cord');
   const cards=[];
   if(w>=2&&w<=10&&L%10===1)cards.push('w'+w);
@@ -1073,9 +1117,36 @@ function loadLevel(L,fresh){
   if(L===101)cards.push('endless');
   for(const c of cards)if(showCard(c))break;
 }
-function bannerMsg(big,small){const b=$('banner');
+function bannerMsg(big,small,lite){const b=$('banner');
   b.innerHTML=big+(small?'<small>'+small+'</small>':'');
-  b.classList.add('show');setTimeout(()=>b.classList.remove('show'),1500);}
+  b.classList.toggle('lite',!!lite);
+  b.classList.add('show');setTimeout(()=>b.classList.remove('show'),lite?900:1500);}
+function loadDaily(fresh){
+  const dstr=todayStr();
+  const h=dayHash(dstr);
+  const L=45+(h%50);
+  curLevel=L;applyTheme(h%10);
+  const g=genLevel(L,W,H,(h^0x9E3779B9)>>>0);
+  lines=g.lines;far=g.far;cell=g.cell;
+  keysOwned=new Set();starsGot=0;combo=0;
+  shield=shopLvl('guard')>=2;
+  starTotalInLevel=lines.filter(x=>x.star).length;
+  anims=[];deathInfo=null;state='play';rush=null;
+  dailyMode=true;curMod=null;
+  hearts=1+shopLvl('heart');
+  preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
+  if(fresh)deaths=0;
+  petted=false;
+  lines.forEach(l=>{l.A=arcs(l.pts);l.gone=false;l.jig=0;l.born=0;});
+  $('hud').style.display='flex';$('gameBtns').style.display='flex';
+  $('worldName').textContent='DAILY KNOT';
+  $('lvlLabel').textContent=dstr;
+  updateHud();refreshAbilBar();refreshGridBtn();
+  hideAll();
+  $('hintBar').style.display='none';
+  bannerMsg('📅 DAILY KNOT',save.daily.last===dstr?'already claimed — playing for glory':dstr);
+  showCard('daily');
+}
 function updateHud(){
   if(state==='rush'&&rush){
     const alive=lines.filter(l=>!l.gone).length;
@@ -1087,6 +1158,8 @@ function updateHud(){
     $('leftLabel').textContent='· '+left+' cord'+(left===1?'':'s');
   }
   $('starChip').textContent='★ '+save.wallet+(state==='play'&&starTotalInLevel?('  ('+starsGot+'/'+starTotalInLevel+')'):'');
+  $('heartChip').style.display=(state==='play'&&hearts>0)?'block':'none';
+  $('heartChip').textContent='❤️'.repeat(Math.max(0,Math.min(5,hearts)));
   $('shieldChip').style.display=shield?'block':'none';
 }
 
@@ -1095,8 +1168,9 @@ function startRush(){
   applyTheme(0);
   curLevel=0;
   far=2*Math.hypot(W,H);cell=cellFor(W,H);
-  lines=[];anims=[];deathInfo=null;preview=null;radarUntil=0;phaseArmed=false;cascLeft=0;
+  lines=[];anims=[];deathInfo=null;preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
   keysOwned=new Set();combo=0;starsGot=0;starTotalInLevel=0;
+  dailyMode=false;curMod=null;hearts=0;
   shield=shopLvl('guard')>=2;
   rush={cleared:0,wave:0,spawnT:0.5,interval:4.2,starsRun:0,snags:0,idc:0,
     rng:mulberry32((Date.now()&0xffffffff)>>>0)};
@@ -1163,7 +1237,8 @@ cv.addEventListener('pointerdown',e=>{
   const l=pickLine(e.clientX,e.clientY);
   pdown={x:e.clientX,y:e.clientY,line:l,previewed:false};
   clearTimeout(holdTimer);
-  if(l&&!phaseArmed&&save.wallet>=abilCost('fore')&&abilUnlocked(ABIL[0])){
+  if(l&&!phaseArmed&&!foreArmed&&save.wallet>=abilCost('fore')&&abilUnlocked(ABIL[0])
+     &&!(curMod&&curMod.key==='nofore')){
     holdTimer=setTimeout(()=>{
       if(!pdown)return;
       pdown.previewed=true;
@@ -1175,7 +1250,7 @@ cv.addEventListener('pointerdown',e=>{
   }
 });
 cv.addEventListener('pointermove',e=>{
-  if(pdown&&Math.hypot(e.clientX-pdown.x,e.clientY-pdown.y)>14){pdown=null;clearTimeout(holdTimer);}
+  if(pdown&&Math.hypot(e.clientX-pdown.x,e.clientY-pdown.y)>22){pdown=null;clearTimeout(holdTimer);}
 });
 cv.addEventListener('pointerup',e=>{
   clearTimeout(holdTimer);
@@ -1191,12 +1266,20 @@ cv.addEventListener('pointerup',e=>{
     return;
   }
   if(!l){burst(e.clientX,e.clientY,'rgba(255,255,255,0.5)',5,1.2);
-    if(phaseArmed){phaseArmed=false;refreshAbilBar();}return;}
+    if(phaseArmed||foreArmed){phaseArmed=false;foreArmed=false;refreshAbilBar();}return;}
   handleTap(l);
 });
 cv.addEventListener('pointercancel',()=>{pdown=null;clearTimeout(holdTimer);});
 
 function handleTap(l){
+  if(foreArmed){
+    const cost=abilCost('fore');
+    if(save.wallet<cost){foreArmed=false;refreshAbilBar();bannerMsg('NEED '+cost+'★');return;}
+    save.wallet-=cost;persist();foreArmed=false;sfx.abil();updateHud();refreshAbilBar();
+    const remaining=lines.filter(q=>!q.gone);
+    preview={line:l,until:timeNow+foreDur(),st:freeStatus(l,remaining,far,keysOwned)};
+    return;
+  }
   if(phaseArmed){
     const cost=abilCost('phase');
     if(save.wallet<cost){phaseArmed=false;refreshAbilBar();bannerMsg('NEED '+cost+'★');return;}
@@ -1220,6 +1303,11 @@ function handleTap(l){
   if(st.state==='free'){fire(l,st.which,false);return;}
   if(shield){shield=false;sfx.shieldSave();l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
     bannerMsg('🛡 SHIELD SPENT','that path was blocked');updateHud();refreshAbilBar();return;}
+  if(state==='play'&&hearts>1){
+    hearts--;deaths++;buzz(25);sfx.shieldSave();petMood('shock',0.8);
+    l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
+    bannerMsg('💔 -1 HEART','that path was blocked');
+    updateHud();return;}
   if(state==='rush'){
     rush.snags++;sfx.death();if(!RM)shake=0.6;flashT=0.3;petMood('shock',1);
     bannerMsg('SNAG!','+2 cords');
@@ -1234,7 +1322,7 @@ function fire(l,which,phased){
   if(combo>0&&timeNow-comboT<2)combo++;else combo=1;
   comboT=timeNow;
   sfx.pluck(combo-1);sfx.whoosh();
-  if(combo>=3)bannerMsg('COMBO ×'+combo);
+  if(combo>=3)bannerMsg('COMBO ×'+combo,null,true);
   if(l.star){starsGot++;save.wallet++;if(rush)rush.starsRun++;persist();sfx.star();
     const sp=pathPt(l.pts,l.A,l.A[l.A.length-1]*l.star);
     burst(sp.x,sp.y,'#ffd166',16,2);}
@@ -1250,6 +1338,15 @@ function fire(l,which,phased){
   const m=Math.hypot(b.x-a.x,b.y-a.y)||1;
   const dir={x:(b.x-a.x)/m,y:(b.y-a.y)/m};
   const ext=pts.concat([rayEndPt(b,dir,far)]);
+  if(save.pet&&pet.y>0&&distPtSeg({x:pet.x,y:pet.y-14},b,ext[ext.length-1])<46){
+    const pc=cordCol(l.col);
+    setTimeout(()=>{if(!save.pet)return;
+      petMood('shock',1.1);buzz(15);sfx.wave();
+      burst(pet.x,pet.y-24,pc,14,2.6);
+      burst(pet.x,pet.y-28,'#ffd166',10,2.1);
+      burst(pet.x,pet.y-18,'#ffffff',8,1.6);
+    },240);
+  }
   const A=arcs(ext),L=arcs(pts)[pts.length-1],total=A[A.length-1];
   anims.push({line:l,ext,A,L,total,t:0,dur:RM?0.35:(0.55+Math.min(0.8,total/1400)),phased});
   if(state==='rush'){
@@ -1288,6 +1385,34 @@ function checkClear(){
   if(state!=='play')return;
   if(lines.every(l=>l.gone)&&anims.length===0){
     state='cleared';
+    const dstr=todayStr();
+    if(save.goal.date!==dstr)save.goal={date:dstr,cleared:0,claimed:false};
+    save.goal.cleared++;
+    let goalMsg='';
+    if(!save.goal.claimed&&save.goal.cleared>=3){save.goal.claimed=true;save.wallet+=5;goalMsg=' · 🎯 daily goal +5★!';}
+    else if(!save.goal.claimed)goalMsg=' · 🎯 '+save.goal.cleared+'/3';
+    sfx.fanfare();confetti();petMood('joy',2.2);buzz([12,40,12]);
+    if(!save.hinted){save.hinted=true;$('hintBar').style.display='none';}
+    if(dailyMode){
+      const already=save.daily.last===dstr;
+      let reward=0;
+      if(!already){
+        save.daily.streak=(save.daily.last===yestStr())?save.daily.streak+1:1;
+        save.daily.last=dstr;
+        reward=5+Math.min(5,save.daily.streak-1);
+        save.wallet+=reward;
+      }
+      persist();
+      setTimeout(()=>{
+        $('clearTitle').textContent='DAILY UNTANGLED';
+        $('btnNext').textContent='Back to title';
+        $('starsEarned').textContent='🔥 '+save.daily.streak;
+        $('clearSub').textContent=(already?'Already claimed today — that one was for glory.'
+          :('+'+reward+'★ · streak day '+save.daily.streak))+goalMsg;
+        show('clear');
+      },RM?300:800);
+      return;
+    }
     const earned=starsGot;
     const prev=save.stars[curLevel]||0;
     if(earned>prev)save.stars[curLevel]=earned;
@@ -1299,14 +1424,14 @@ function checkClear(){
     if(curLevel%10===0)bonus+=(shopLvl('prosp')>=2?5:3);
     save.wallet+=bonus;
     persist();
-    sfx.fanfare();confetti();petMood('joy',2.2);buzz([12,40,12]);
-    if(!save.hinted){save.hinted=true;persist();$('hintBar').style.display='none';}
     setTimeout(()=>{
       if(curLevel===100&&!save.victory){save.victory=true;persist();
         $('victoryStars').textContent='★ '+save.wallet+' in the pouch';
         show('victory');confetti();return;}
+      $('clearTitle').textContent='KNOT UNTANGLED';
+      $('btnNext').textContent='Next knot';
       $('starsEarned').textContent=(starTotalInLevel?('★'.repeat(earned)+'☆'.repeat(Math.max(0,starTotalInLevel-earned))):'')+(bonus?('  +'+bonus+'★'):'');
-      $('clearSub').textContent=(deaths===0?'Flawless — not a single snag.':('Untangled after '+deaths+' snag'+(deaths===1?'':'s')+'.'))+(bonus?(' Bonus +'+bonus+'★.'):'');
+      $('clearSub').textContent=(deaths===0?'Flawless — not a single snag.':('Untangled after '+deaths+' snag'+(deaths===1?'':'s')+'.'))+(bonus?(' Bonus +'+bonus+'★.'):'')+goalMsg;
       show('clear');
     },RM?300:800);
   }
@@ -1490,8 +1615,6 @@ function updatePet(dt){
     parts.push({x:pet.x+12*pet.dir,y:pet.y-32,vx:0.2*pet.dir,vy:-0.5,life:1.4,t:0,col:'#fff',sz:11,g:0,tx:'💤'});
 }
 function tri2(g,ax,ay,bx,by,cx,cy){g.beginPath();g.moveTo(ax,ay);g.lineTo(bx,by);g.lineTo(cx,cy);g.closePath();g.fill();}
-function emojiG(g,txt,x,y,size){g.font=size+'px sans-serif';
-  g.textAlign='center';g.textBaseline='middle';g.fillText(txt,x,y);}
 function buzz(p){if(navigator.vibrate){try{navigator.vibrate(p);}catch(e){}}}
 function renderPet(g,cx,cy,scale,t){
   if(!save.pet||!PETS[save.pet])return;
@@ -1534,11 +1657,59 @@ function renderPet(g,cx,cy,scale,t){
   g.beginPath();g.arc(10,-12,2.4,0,6.283);g.fill();
   g.strokeStyle='#241c14';g.lineWidth=1.4;
   g.beginPath();g.arc(0,-11,2.5,0.3,2.84);g.stroke();
-  g.restore();
   const worn=(save.petAcc&&save.petAcc.worn)||{};
-  ['neck','head','eyes'].forEach(z=>{const k=worn[z];
-    if(k&&ACC[k]){const A=ACC[k];emojiG(g,A.e,A.dx*pet.dir,-13+A.dy,A.s);}});
+  ['neck','eyes','head'].forEach(z=>{if(worn[z])drawAcc(g,worn[z],sp,t);});
   g.restore();
+  g.restore();
+}
+function drawAcc(g,key,sp,t){
+  const hy=sp.acY||0;
+  g.lineJoin='round';g.lineCap='round';
+  if(key==='acc_hat'){
+    g.save();g.translate(0,hy);
+    g.fillStyle='#1c1c24';
+    g.beginPath();g.ellipse(0,-27,12,2.6,0,0,6.283);g.fill();
+    g.fillRect(-7.5,-40,15,13.5);
+    g.fillStyle='#ffd166';g.fillRect(-7.5,-30.5,15,3);
+    g.fillStyle='rgba(255,255,255,0.22)';g.fillRect(-6,-39,2.4,12);
+    g.restore();
+  }else if(key==='acc_crown'){
+    g.save();g.translate(0,hy);
+    g.fillStyle='#ffd166';g.strokeStyle='#c9962f';g.lineWidth=1;
+    g.beginPath();g.moveTo(-9,-26);g.lineTo(-9,-33);g.lineTo(-4.5,-28);
+    g.lineTo(0,-35);g.lineTo(4.5,-28);g.lineTo(9,-33);g.lineTo(9,-26);
+    g.closePath();g.fill();g.stroke();
+    g.fillStyle='#ff5d7e';
+    [[-9,-33],[0,-35],[9,-33]].forEach(p=>{g.beginPath();g.arc(p[0],p[1],1.4,0,6.283);g.fill();});
+    g.restore();
+  }else if(key==='acc_bow'){
+    g.save();g.translate(9,-24+hy);g.rotate(-0.25);
+    g.fillStyle='#ff6fa5';g.strokeStyle='#d14a82';g.lineWidth=1;
+    g.beginPath();g.moveTo(0,0);g.lineTo(-6.5,-4.5);g.lineTo(-6.5,4.5);g.closePath();g.fill();g.stroke();
+    g.beginPath();g.moveTo(0,0);g.lineTo(6.5,-4.5);g.lineTo(6.5,4.5);g.closePath();g.fill();g.stroke();
+    g.beginPath();g.arc(0,0,2.2,0,6.283);g.fill();g.stroke();
+    g.restore();
+  }else if(key==='acc_shade'){
+    g.fillStyle='#14161e';g.strokeStyle='#3a3f4d';g.lineWidth=1;
+    g.beginPath();g.ellipse(-5.5,-16,3.6,2.8,0,0,6.283);g.fill();g.stroke();
+    g.beginPath();g.ellipse(5.5,-16,3.6,2.8,0,0,6.283);g.fill();g.stroke();
+    g.strokeStyle='#14161e';g.lineWidth=1.6;
+    g.beginPath();g.moveTo(-1.9,-16.6);g.lineTo(1.9,-16.6);g.stroke();
+    g.beginPath();g.moveTo(-9.1,-16.6);g.lineTo(-12,-18);g.stroke();
+    g.beginPath();g.moveTo(9.1,-16.6);g.lineTo(12,-18);g.stroke();
+    g.fillStyle='rgba(160,210,255,0.35)';
+    g.beginPath();g.ellipse(-6.5,-17,1.2,0.8,0.6,0,6.283);g.fill();
+    g.beginPath();g.ellipse(4.5,-17,1.2,0.8,0.6,0,6.283);g.fill();
+  }else if(key==='acc_scarf'){
+    g.strokeStyle='#d24545';g.lineWidth=6;
+    g.beginPath();g.moveTo(-11,-4);g.quadraticCurveTo(0,-1,11,-4);g.stroke();
+    g.strokeStyle='#b23434';g.lineWidth=6;g.lineCap='butt';
+    g.beginPath();g.moveTo(5.5,-2.8);g.lineTo(7.5,6+0.8*Math.sin(t*3));g.stroke();
+    g.strokeStyle='#e86a6a';g.lineWidth=1.4;g.lineCap='round';
+    g.beginPath();g.moveTo(-9,-4.6);g.quadraticCurveTo(0,-1.8,9,-4.6);g.stroke();
+    g.fillStyle='#b23434';
+    for(let i=0;i<3;i++)g.fillRect(4.7+i*2,5.4+0.8*Math.sin(t*3),1.3,3);
+  }
 }
 function drawPet(t){if(pet.y>0)renderPet(ctx,pet.x,pet.y,1,t);}
 
@@ -1605,11 +1776,18 @@ function abilTap(a){
   if(state!=='play'&&state!=='rush')return;
   ac();if(save.music)startMusic();
   const cost=abilCost(a.key);
-  if(a.key==='fore'){bannerMsg('👁 FORESIGHT','hold a cord to preview · '+cost+'★');return;}
+  if(a.key==='fore'){
+    if(curMod&&curMod.key==='nofore'){bannerMsg('👁 SEALED','no foresight this knot');return;}
+    if(foreArmed){foreArmed=false;refreshAbilBar();return;}
+    if(save.wallet<cost){bannerMsg('NEED '+cost+'★','collect stars on cords');return;}
+    foreArmed=true;phaseArmed=false;sfx.abil();
+    bannerMsg('👁 ARMED','tap a cord to preview its path');
+    refreshAbilBar();return;
+  }
   if(a.key==='phase'){
     if(phaseArmed){phaseArmed=false;refreshAbilBar();return;}
     if(save.wallet<cost){bannerMsg('NEED '+cost+'★','collect stars on cords');return;}
-    phaseArmed=true;bannerMsg('🚀 ARMED','tap any cord');sfx.abil();refreshAbilBar();return;
+    phaseArmed=true;foreArmed=false;bannerMsg('🚀 ARMED','tap any cord');sfx.abil();refreshAbilBar();return;
   }
   if(save.wallet<cost){bannerMsg('NEED '+cost+'★','collect stars on cords');return;}
   save.wallet-=cost;persist();updateHud();
@@ -1704,7 +1882,9 @@ function syncSoundBtns(){
 }
 function toTitle(){state='title';$('hud').style.display='none';$('gameBtns').style.display='none';
   refreshAbilBar();refreshTitle();show('title');}
-$('btnPlay').addEventListener('click',()=>{ac();if(save.music)startMusic();loadLevel(save.unlocked,true);});
+$('btnPlay').addEventListener('click',()=>{ac();if(save.music)startMusic();
+  loadLevel(Math.max(1,Math.min(save.lastKnot||save.unlocked,save.unlocked)),true);});
+$('btnDaily').addEventListener('click',()=>{ac();if(save.music)startMusic();loadDaily(true);});
 $('btnRush').addEventListener('click',()=>{
   if(save.unlocked<11){bannerMsg('🔒 RUSH','clear knot 10 to unlock');return;}
   ac();if(save.music)startMusic();startRush();});
@@ -1719,10 +1899,12 @@ $('btnShopBack').addEventListener('click',()=>{
 $('btnLevels').addEventListener('click',()=>{buildSelect();show('select');});
 $('btnSelBack').addEventListener('click',()=>{
   if(state==='play'||state==='rush')hideAll();else toTitle();});
-$('btnRetry').addEventListener('click',()=>loadLevel(curLevel,false));
+$('btnRetry').addEventListener('click',()=>{if(dailyMode)loadDaily(false);else loadLevel(curLevel,false);});
 $('btnDeadLevels').addEventListener('click',()=>{state='title';buildSelect();show('select');});
-$('btnNext').addEventListener('click',()=>loadLevel(curLevel+1,true));
-$('btnReplay').addEventListener('click',()=>loadLevel(curLevel,true));
+$('btnNext').addEventListener('click',()=>{
+  if(dailyMode){slotResetView();show('title');}
+  else loadLevel(curLevel+1,true);});
+$('btnReplay').addEventListener('click',()=>{if(dailyMode)loadDaily(true);else loadLevel(curLevel,true);});
 $('btnClearLevels').addEventListener('click',()=>{state='title';buildSelect();show('select');});
 $('btnRushAgain').addEventListener('click',()=>startRush());
 $('btnRushTitle').addEventListener('click',()=>toTitle());
@@ -1778,14 +1960,16 @@ $('btnThemeBack').addEventListener('click',()=>{
 /* ---------- looms (save slots) & companion picker ---------- */
 function slotResetView(){
   curLevel=0;lines=[];anims=[];rush=null;state='title';paused=false;
+  dailyMode=false;curMod=null;foreArmed=false;phaseArmed=false;
   $('hud').style.display='none';$('gameBtns').style.display='none';
   syncSoundBtns();applyTheme(0);refreshAbilBar();refreshTitle();
 }
 function buildCompanion(){
   if(!save.pet||!PETS[save.pet]){openPetPicker(slots.list.length?'assign':'create');return;}
   const p=PETS[save.pet];
+  const wornIcons=Object.values(save.petAcc.worn||{}).filter(Boolean).map(k=>ACC[k]?ACC[k].e:'').join(' ');
   $('compStars').textContent='★ '+save.wallet;
-  $('compName').textContent=p.emoji+' '+p.name;
+  $('compName').textContent=p.emoji+' '+p.name+(wornIcons?'   '+wornIcons:'');
   $('compStats').textContent='Knot '+save.unlocked+' · ⚡ best '+save.rushBest+' · '+
     Object.keys(save.petAcc.owned).length+'/'+WARDROBE.length+' wardrobe';
   const g=$('wardGrid');g.innerHTML='';
@@ -1829,7 +2013,7 @@ function buildSlots(){
     if(cur)div.style.borderColor='var(--gold)';
     div.innerHTML='<div class="ic">'+p.emoji+accE+'</div><div class="info">'+
       '<div class="nm">'+p.name+(cur?' <span style="color:var(--gold);font-size:11px;">· CURRENT</span>':'')+'</div>'+
-      '<div class="ds">Knot '+(inf.knot||1)+' · ★ '+(inf.wallet||0)+' · '+(inf.ups||0)+' shop item'+((inf.ups||0)===1?'':'s')+'</div></div>'+
+      '<div class="ds">Knot '+(inf.knot||1)+' · ★ '+(inf.wallet||0)+' · '+(inf.ups||0)+' shop item'+((inf.ups||0)===1?'':'s')+(inf.streak?(' · 🔥'+inf.streak):'')+'</div></div>'+
       '<div style="display:flex;flex-direction:column;gap:6px;">'+
       (cur?'':'<button class="buyBtn" data-s="'+id+'">PLAY</button>')+
       '<button class="ghostbtn" data-del="'+id+'" style="padding:7px 10px;font-size:12px;">🗑</button></div>';
@@ -1897,6 +2081,7 @@ $('btnHome').addEventListener('click',()=>{
 
 /* ---------- start over ---------- */
 $('btnGrid').addEventListener('click',()=>{
+  if(curMod&&curMod.key==='blackout'){bannerMsg('⌗ BLACKOUT','grid sealed this knot');return;}
   save.gridOn=!(save.gridOn!==false);persist();refreshGridBtn();
   bannerMsg(save.gridOn?'⌗ GRID ON':'⌗ GRID OFF');});
 $('btnReset').addEventListener('click',()=>show('reset'));
@@ -1925,9 +2110,13 @@ function refreshTitle(){
   if(p)bits.push(p.emoji+' '+p.name);
   if(save.unlocked>1)bits.push('★ '+save.wallet+' · knot '+save.unlocked);
   if(save.rushBest>0)bits.push('⚡ best '+save.rushBest);
+  const alive=save.daily.last===todayStr()||save.daily.last===yestStr();
+  if(alive&&save.daily.streak>0)bits.push('🔥 '+save.daily.streak);
   $('titleStats').textContent=bits.join('  ·  ');
-  $('btnPlay').textContent=save.unlocked>1?'Continue — Knot '+save.unlocked:'Play';
+  const resume=Math.max(1,Math.min(save.lastKnot||save.unlocked,save.unlocked));
+  $('btnPlay').textContent=(save.unlocked>1||resume>1)?'Continue — Knot '+resume:'Play';
   $('btnRush').textContent=save.unlocked<11?'🔒 Rush':'⚡ Rush';
+  $('btnDaily').textContent=save.daily.last===todayStr()?'📅 Daily ✓':'📅 Daily';
 }
 loadAll().then(()=>{
   syncSoundBtns();applyTheme(0);refreshTitle();
