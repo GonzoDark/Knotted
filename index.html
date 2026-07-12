@@ -27,8 +27,13 @@
   #shieldChip{display:none;color:#9fe8ff;}
   .btnrow{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);right:12px;z-index:6;
     display:flex;gap:8px;}
-  #abilBar{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:12px;z-index:6;
-    display:none;gap:8px;}
+  #abilBar{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:10px;z-index:6;
+    display:none;gap:6px;}
+  #abilBar .ibtn{width:41px;height:41px;font-size:17px;border-radius:12px;}
+  .wfx{position:fixed;z-index:40;font-weight:800;font-size:15px;pointer-events:none;
+    transition:transform .8s ease-out,opacity .8s;opacity:1;}
+  .chip.pulse{animation:chipPulse .45s;}
+  @keyframes chipPulse{0%{transform:scale(1);}40%{transform:scale(1.22);}100%{transform:scale(1);}}
   .ibtn{width:46px;height:46px;border-radius:14px;border:1px solid var(--edge);
     background:var(--card);backdrop-filter:blur(6px);color:var(--ink);font-size:20px;
     display:flex;align-items:center;justify-content:center;pointer-events:auto;position:relative;}
@@ -146,10 +151,13 @@
 </div>
 
 <div id="abilBar">
-  <button class="ibtn" id="abFore" aria-label="Foresight: hold a cord to preview its path">👁<span class="badge" id="bgFore">2★</span></button>
+  <div class="chip" id="abilStars" style="align-self:center;padding:6px 9px;font-size:12px;color:var(--gold);font-weight:800;pointer-events:none;">★0</div>
+  <button class="ibtn" id="abFore" aria-label="Foresight: arm, then tap a cord to preview its path">👁<span class="badge" id="bgFore">2★</span></button>
   <button class="ibtn" id="abRadar" aria-label="Radar: reveal all free cords">📡<span class="badge" id="bgRadar">4★</span></button>
+  <button class="ibtn" id="abOver" aria-label="Overview: see the whole knot">🔭<span class="badge" id="bgOver">2★</span></button>
   <button class="ibtn" id="abPhase" aria-label="Phase shot: fire one cord through anything">🚀<span class="badge" id="bgPhase">7★</span></button>
   <button class="ibtn" id="abCasc" aria-label="Cascade: auto-fire free cords in a chain">🌊<span class="badge" id="bgCasc">6★</span></button>
+  <button class="ibtn" id="abShock" aria-label="Shockwave: fire every free cord at once">💥<span class="badge" id="bgShock">9★</span></button>
 </div>
 
 <div class="btnrow" id="gameBtns" style="display:none;">
@@ -378,7 +386,8 @@ function levelParams(L){
   const w=Math.ceil(L/10);
   const e=Math.max(0,L-100);
   let n=3+Math.floor((L-1)/7); if(L%10===0)n+=2;
-  n=Math.min(n, L<=20?8:15);
+  const bf=w<=3?1:Math.min(2.2,1+(w-3)*0.16);
+  n=Math.min(n, L<=20?8:(bf>=1.8?22:(bf>=1.3?18:15)));
   const segMax = w===1?(L<6?1:2) : w===2?(L>15?3:2) : w<=4?3 : w<=6?4 : 5;
   const diag = w>=4;
   const themeIdx=(w-1)%10;
@@ -399,7 +408,7 @@ function levelParams(L){
   }
   const maxFree = L<=6?99 : L<=12?4 : L<=25?3 : 2;
   const minScore = L>30?2:1;
-  return {w,n,segMax,diag,themeIdx,nStars,shield,ghosts,twoHead,locks,frozen,maxFree,minScore,mod};
+  return {w,n,segMax,diag,themeIdx,nStars,shield,ghosts,twoHead,locks,frozen,maxFree,minScore,mod,bf};
 }
 
 function rayEndPt(pt,dir,far){return {x:pt.x+dir.x*far,y:pt.y+dir.y*far};}
@@ -570,7 +579,9 @@ function decorate(lines,P,rng,L,far){
     l.star=0.35+rng()*0.3;
   }
   if(P.shield){
-    const c=lines.filter(x=>!x.star);
+    const early=Math.max(2,Math.ceil(n/3));
+    let c=lines.filter(x=>!x.star&&x.ord<=early);
+    if(!c.length)c=lines.filter(x=>!x.star);
     if(c.length)c[Math.floor(rng()*c.length)].shield=true;
   }
   if(P.ghosts>0)lines.forEach(l=>{if(rng()<P.ghosts)l.ghost=true;});
@@ -588,21 +599,22 @@ function initialFree(lines,far){
 
 function genLevel(L,W,H,seedBase){
   const P=levelParams(L);
-  const far=2*Math.hypot(W,H);
+  const BW=Math.round(W*P.bf), BH=Math.round(H*P.bf);
+  const far=2*Math.hypot(BW,BH);
   const cell=cellFor(W,H);
   const base=(seedBase===undefined?L:seedBase)>>>0;
   let bestPick=null,bestFree=Infinity;
   for(let outer=0;outer<16;outer++){
     const rng=mulberry32((Math.imul(base,2654435761) ^ (outer*977+13))>>>0);
     const n=Math.max(3,P.n-(outer>6?outer-6:0));
-    const lines=tryBuild(n,P,rng,W,H,far,cell);
+    const lines=tryBuild(n,P,rng,BW,BH,far,cell);
     if(!lines)continue;
     decorate(lines,P,rng,L,far);
     const f=initialFree(lines,far);
     if(f<bestFree){bestFree=f;bestPick=lines;}
     if(f<=P.maxFree)break;
   }
-  if(bestPick)return {lines:bestPick,P,far,cell};
+  if(bestPick)return {lines:bestPick,P,far,cell,BW,BH};
   const rng=mulberry32(L>>>0);
   const lines=[];
   for(let i=0;i<3;i++){
@@ -610,7 +622,7 @@ function genLevel(L,W,H,seedBase){
     lines.push({pts:[{x:cell*3,y},{x:cell*7,y}],ord:i+1});
   }
   decorate(lines,P,rng,L,far);
-  return {lines,P,far,cell};
+  return {lines,P,far,cell,BW:W,BH:H};
 }
 
 function freeStatus(l,remaining,far,keysOwned){
@@ -625,25 +637,7 @@ function freeStatus(l,remaining,far,keysOwned){
   return {state:'blocked',hit:hitA};
 }
 
-/* --- Rush mode pure helpers --- */
-function rushDiff(cleared){
-  return {segMax:Math.min(4,1+Math.floor(cleared/12)), diag:cleared>=20,
-    star:0.22, ice:cleared>=30?0.10:0, ghost:cleared>=40?0.12:0,
-    shieldC:cleared>=15?0.06:0};
-}
-function rushSpawn(board,cleared,W,H,cell,far,rng){
-  const d=rushDiff(cleared);
-  const P={segMax:d.segMax,diag:d.diag};
-  const [gx0,gx1,gy0,gy1]=gridBounds(W,H,cell);
-  if(gx1-gx0<3||gy1-gy0<3)return null;
-  for(let a=0;a<80;a++){
-    const c=randLine(P,rng,gx0,gx1,gy0,gy1,cell,board.length>9);
-    if(!c)continue;
-    if(!candidateValid(c,board,12,far))continue;
-    return c;
-  }
-  return null;
-}
+/* --- Rush mode is arcade-only; no pure helpers needed --- */
 
 function solveTest(lines,far){
   const rem=new Set(lines); const keys=new Set();
@@ -678,6 +672,8 @@ function runTests(){
     const g=genLevel(L,390,760);return L+':'+initialFree(g.lines,g.far);});
   console.log('initial free cords → '+fr.join('  '));
   console.log('endless remix → '+[101,120,150,200,300,500].map(L=>L+':'+((levelParams(L).mod||{key:'-'}).key)).join('  '));
+  console.log('board size → '+[10,35,60,100,300].map(L=>{const g=genLevel(L,390,760);
+    return L+':'+g.BW+'x'+g.BH+'('+g.lines.length+' cords)';}).join('  '));
   // rush invariant: with spawn rule, the newest cord on the board is always free
   const rng=mulberry32(4242);
   const far=2*Math.hypot(390,760), cell=cellFor(390,760);
@@ -717,18 +713,21 @@ const THEMES=[
 ];
 const MECH={
  w2:{icon:"〰️",name:"Bendy cords",desc:"Cords now bend along the grid. The body can weave anywhere — only the arrowhead's straight exit matters."},
- w3:{icon:"🛡",name:"Shield orbs",desc:"Some cords carry a shield orb. Clear that cord to hold a shield — it absorbs one wrong tap."},
+ w3:{icon:"🛡",name:"Shield orbs",desc:"Some cords carry a shield orb. Clear that cord to hold a shield — it absorbs one wrong tap and is carried with you between knots."},
  w4:{icon:"👻",name:"Phantom cords",desc:"Some cords fade in and out. They still block paths. Watch closely."},
  w5:{icon:"🔒",name:"Padlocked cords",desc:"Locked cords won't budge until you clear the cord carrying their key."},
  w6:{icon:"↔️",name:"Two-headed cords",desc:"Cords with two arrowheads can exit either way. They only need one clear path."},
  w7:{icon:"🧊",name:"Frozen cords",desc:"Iced cords need a tap to crack the ice first, then a second tap to fire. Cracking is always safe."},
  w8:{icon:"🌪",name:"Dense knots",desc:"More cords, more locks, tighter tangles. Trace carefully before you tap."},
  w10:{icon:"🕳",name:"The Void",desc:"Everything you've learned, in the dark. Ten final knots… or are they?"},
- a1:{icon:"👁",name:"Foresight unlocked",desc:"Tap 👁 to arm it, then tap any cord to preview its exit path — or just press & hold a cord. Green means clear, red shows the blocker. Costs ★ per use."},
- a2:{icon:"📡",name:"Radar unlocked",desc:"Tap 📡 to briefly reveal every cord that's currently free to fire. Costs ★ per use."},
- a3:{icon:"🚀",name:"Phase Shot unlocked",desc:"Tap 🚀 then tap any cord to fire it straight through everything — locks, ice, blockers. Costs ★ per use."},
- a4:{icon:"🌊",name:"Cascade unlocked",desc:"Tap 🌊 to auto-fire free cords in a chain. Costs ★ per use. Upgrade it in the shop."},
- rush:{icon:"⚡",name:"Rush mode",desc:"Cords keep spawning. Don't let the board hit 16 — every wrong tap spawns 2 more! Clear cords to score ★ and survive the waves."},
+ pan:{icon:"🖐",name:"Bigger knots",desc:"This knot is larger than your screen. Drag anywhere to pan around it — the minimap up top shows where you are. 🔭 Overview (knot 35) shows it all at once."},
+ ab_fore:{icon:"👁",name:"Foresight unlocked",desc:"Tap 👁 to arm it, then tap any cord to preview its exit path — or just press & hold a cord. Green means clear, red shows the blocker. Costs ★ per use."},
+ ab_radar:{icon:"📡",name:"Radar unlocked",desc:"Tap 📡 to briefly reveal every cord that's currently free to fire. Costs ★ per use."},
+ ab_over:{icon:"🔭",name:"Overview unlocked",desc:"Tap 🔭 to zoom out and see the whole knot at once. Tap the board to return. Costs ★ per use."},
+ ab_phase:{icon:"🚀",name:"Phase Shot unlocked",desc:"Tap 🚀 then tap any cord to fire it straight through everything — locks, ice, blockers. Costs ★ per use."},
+ ab_casc:{icon:"🌊",name:"Cascade unlocked",desc:"Tap 🌊 to auto-fire free cords in a chain. Costs ★ per use. Upgrade it in the shop."},
+ ab_shock:{icon:"💥",name:"Shockwave unlocked",desc:"Tap 💥 to fire every free cord at once. Glorious in big knots and in Rush. Costs ★ per use."},
+ rush:{icon:"⚡",name:"Rush mode",desc:"Monsters march toward your companion! Fire cords — flying arrows pierce and damage everything in their path. Three breaches and the run ends."},
  daily:{icon:"📅",name:"Daily Knot",desc:"One special knot per day. Clear it to build a 🔥 streak — the longer the streak, the bigger the ★ reward. Come back tomorrow!"},
  endless:{icon:"♾️",name:"The Endless",desc:"Knots beyond 100 grow without limit — and every world carries a remix modifier: phantom veils, blackouts, swarms, double locks and worse."},
  endless:{icon:"♾️",name:"The Endless",desc:"Knots beyond 100 grow without limit — denser tangles, extra locks, more phantoms and ice. Worlds loop with new fury."},
@@ -736,8 +735,10 @@ const MECH={
 const ABIL=[
  {key:'fore', btn:'abFore', badge:'bgFore', unlockAt:5},
  {key:'radar',btn:'abRadar',badge:'bgRadar',unlockAt:20},
+ {key:'over', btn:'abOver', badge:'bgOver', unlockAt:35},
  {key:'phase',btn:'abPhase',badge:'bgPhase',unlockAt:40},
  {key:'casc', btn:'abCasc', badge:'bgCasc', unlockAt:60},
+ {key:'shock',btn:'abShock',badge:'bgShock',unlockAt:80},
 ];
 const SHOP=[
  {key:'fore',icon:'👁',name:'Foresight',req:5,
@@ -746,12 +747,18 @@ const SHOP=[
  {key:'radar',icon:'📡',name:'Radar',req:20,
   base:'Reveal every free cord for 2 s.',
   tiers:[{p:40,d:'Radar lasts 5 s'},{p:90,d:'Lasts 8 s and costs 3★'}]},
+ {key:'over',icon:'🔭',name:'Overview',req:35,
+  base:'Zoom out to see the whole knot for 4 s.',
+  tiers:[{p:45,d:'Overview lasts 8 s'},{p:90,d:'Cost drops to 1★'}]},
  {key:'phase',icon:'🚀',name:'Phase Shot',req:40,
   base:'Fire one cord through anything.',
   tiers:[{p:55,d:'Phased cords drop +1★ on exit'},{p:95,d:'Cost drops to 5★'}]},
  {key:'casc',icon:'🌊',name:'Cascade',req:60,
   base:'Auto-fire a chain of 3 free cords.',
   tiers:[{p:50,d:'Chain grows to 5'},{p:100,d:'Chain grows to 8'}]},
+ {key:'shock',icon:'💥',name:'Shockwave',req:80,
+  base:'Fire every free cord at once.',
+  tiers:[{p:70,d:'Shocked cords drop +1★ each'},{p:140,d:'Cost drops to 7★'}]},
  {key:'grid',icon:'⌗',name:'Gridlines',req:1,
   base:'The alignment grid is hidden. Cords still snap to it — you just can\'t see it.',
   tiers:[{p:40,d:'Reveal the grid, plus an in-game toggle button'}]},
@@ -840,7 +847,7 @@ const store={
     try{localStorage.setItem(k,v);}catch(e){}
   }
 };
-function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,pet:null,petAcc:{owned:{},worn:{}},lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
+function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,pet:null,petAcc:{owned:{},worn:{}},petAt:0,shield:false,lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
 let save=freshSave();
 let slots={list:[],active:null,info:{}};
 function migrateSave(src){
@@ -920,11 +927,14 @@ function shopLvl(k){return save.shop[k]||0;}
 function abilCost(k){
   if(k==='fore')return shopLvl('fore')>=2?1:2;
   if(k==='radar')return shopLvl('radar')>=2?3:4;
+  if(k==='over')return shopLvl('over')>=2?1:2;
   if(k==='phase')return shopLvl('phase')>=2?5:7;
+  if(k==='shock')return shopLvl('shock')>=2?7:9;
   return 6;
 }
 const foreDur=()=>shopLvl('fore')>=1?5:2.2;
 const radarDur=()=>[2.2,5,8][shopLvl('radar')];
+const overDur=()=>shopLvl('over')>=1?8:4;
 const cascChain=()=>[3,5,8][shopLvl('casc')];
 
 /* ---------- audio ---------- */
@@ -996,21 +1006,22 @@ const sfx={
 
 /* ---------- particles / juice ---------- */
 let parts=[],shake=0,flashT=0;
-function burst(x,y,col,n,spd){n=RM?Math.min(n,6):n;
+function burst(x,y,col,n,spd,scr){n=RM?Math.min(n,6):n;
   for(let i=0;i<n;i++){const a=Math.random()*6.283,v=(0.4+Math.random())*spd;
-    parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:0.5+Math.random()*0.5,t:0,col,sz:2+Math.random()*3,g:0.05});}}
+    parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:0.5+Math.random()*0.5,t:0,col,sz:2+Math.random()*3,g:0.05,scr:!!scr});}}
 function confetti(){const n=RM?20:90;
   for(let i=0;i<n;i++)parts.push({x:Math.random()*W,y:-10-Math.random()*80,
     vx:(Math.random()-0.5)*1.5,vy:1+Math.random()*2,life:2+Math.random(),t:0,
-    col:cordCol(i%5),sz:3+Math.random()*4,g:0.02,fl:true});}
+    col:cordCol(i%5),sz:3+Math.random()*4,g:0.02,fl:true,scr:true});}
 function stepParts(dt){
   for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.t+=dt;
     if(p.t>p.life){parts.splice(i,1);continue;}
     p.vy+=p.g;p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;
     if(p.fl)p.vx+=Math.sin(p.t*8+p.y)*0.02;}
 }
-function drawParts(){
-  for(const p of parts){ctx.globalAlpha=Math.max(0,1-p.t/p.life);
+function drawParts(scr){
+  for(const p of parts){if((!!p.scr)!==(!!scr))continue;
+    ctx.globalAlpha=Math.max(0,1-p.t/p.life);
     if(p.tx){ctx.font=(p.sz>4?p.sz:12)+'px sans-serif';
       ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.tx,p.x,p.y);}
     else{ctx.fillStyle=p.col;
@@ -1025,6 +1036,32 @@ let state='title'; // title | play | dying | cleared | rush | rushover
 let anims=[],deathInfo=null,deaths=0,combo=0,comboT=0,timeNow=0;
 let preview=null,radarUntil=0,phaseArmed=false,foreArmed=false,cascLeft=0;
 let hearts=1,dailyMode=false,curMod=null;
+let BW=innerWidth,BH=innerHeight,cam={x:0,y:0},camV={x:0,y:0},overviewUntil=0;
+function clampCam(){
+  const mx=Math.max(0,BW-W),my=Math.max(0,BH-H);
+  const px=cam.x,py=cam.y;
+  cam.x=BW<=W?(BW-W)/2:Math.min(mx,Math.max(0,cam.x));
+  cam.y=BH<=H?(BH-H)/2:Math.min(my,Math.max(0,cam.y));
+  if(cam.x!==px)camV.x=0;
+  if(cam.y!==py)camV.y=0;
+}
+function walletFx(delta){
+  const chip=$('starChip');
+  chip.classList.remove('pulse');void chip.offsetWidth;chip.classList.add('pulse');
+  const r=chip.getBoundingClientRect();
+  const s=document.createElement('div');
+  s.className='wfx';
+  s.textContent=(delta>0?'+':'−')+Math.abs(delta)+'★';
+  s.style.color=delta>0?'#ffd166':'#ff8fa3';
+  s.style.left=(r.left+r.width/2-14)+'px';
+  s.style.top=(r.bottom+4)+'px';
+  document.body.appendChild(s);
+  requestAnimationFrame(()=>{s.style.transform='translateY(26px)';s.style.opacity='0';});
+  setTimeout(()=>s.remove(),850);
+}
+function gain(n){save.wallet+=n;persist();walletFx(n);updateHud();refreshAbilBar();}
+function spend(n){save.wallet-=n;persist();walletFx(-n);updateHud();refreshAbilBar();}
+function setShield(v){shield=v;save.shield=v;persist();updateHud();}
 let rush=null; // {cleared,wave,spawnT,interval,starsRun,snags,idc,rng}
 
 function curTheme(){return THEMES[themeIdxNow%10];}
@@ -1089,17 +1126,20 @@ function showCard(key){
 /* ---------- campaign ---------- */
 function loadLevel(L,fresh){
   curLevel=L;applyTheme(Math.ceil(L/10)-1);
-  const g=genLevel(L,W,H);
+  const g=genLevel(L,Math.min(W,H),Math.max(W,H));
   lines=g.lines;far=g.far;cell=g.cell;
+  BW=g.BW;BH=g.BH;
+  cam.x=Math.max(0,(BW-W)/2);cam.y=Math.max(0,(BH-H)/2);
+  camV.x=0;camV.y=0;overviewUntil=0;clampCam();
   keysOwned=new Set();starsGot=0;combo=0;
-  shield=(shopLvl('guard')>=2)||(shopLvl('guard')>=1&&L%10===0);
+  setShield(save.shield||(shopLvl('guard')>=2)||(shopLvl('guard')>=1&&L%10===0));
   starTotalInLevel=lines.filter(x=>x.star).length;
   anims=[];deathInfo=null;state='play';rush=null;
   dailyMode=false;curMod=g.P.mod||null;
   hearts=1+shopLvl('heart');
   preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
   if(fresh)deaths=0;
-  petted=false;
+
   save.lastKnot=L;persist();
   lines.forEach(l=>{l.A=arcs(l.pts);l.gone=false;l.jig=0;l.born=0;});
   $('hud').style.display='flex';$('gameBtns').style.display='flex';
@@ -1113,7 +1153,8 @@ function loadLevel(L,fresh){
   else if(L%10===0)bannerMsg('BOSS KNOT','untangle the golden cord');
   const cards=[];
   if(w>=2&&w<=10&&L%10===1)cards.push('w'+w);
-  ABIL.forEach((a,i)=>{if(L===a.unlockAt)cards.push('a'+(i+1));});
+  if(BW>W+4)cards.push('pan');
+  ABIL.forEach(a=>{if(L===a.unlockAt)cards.push('ab_'+a.key);});
   if(L===101)cards.push('endless');
   for(const c of cards)if(showCard(c))break;
 }
@@ -1126,17 +1167,20 @@ function loadDaily(fresh){
   const h=dayHash(dstr);
   const L=45+(h%50);
   curLevel=L;applyTheme(h%10);
-  const g=genLevel(L,W,H,(h^0x9E3779B9)>>>0);
+  const g=genLevel(L,Math.min(W,H),Math.max(W,H),(h^0x9E3779B9)>>>0);
   lines=g.lines;far=g.far;cell=g.cell;
+  BW=g.BW;BH=g.BH;
+  cam.x=Math.max(0,(BW-W)/2);cam.y=Math.max(0,(BH-H)/2);
+  camV.x=0;camV.y=0;overviewUntil=0;clampCam();
   keysOwned=new Set();starsGot=0;combo=0;
-  shield=shopLvl('guard')>=2;
+  setShield(save.shield||shopLvl('guard')>=2);
   starTotalInLevel=lines.filter(x=>x.star).length;
   anims=[];deathInfo=null;state='play';rush=null;
   dailyMode=true;curMod=null;
   hearts=1+shopLvl('heart');
   preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
   if(fresh)deaths=0;
-  petted=false;
+
   lines.forEach(l=>{l.A=arcs(l.pts);l.gone=false;l.jig=0;l.born=0;});
   $('hud').style.display='flex';$('gameBtns').style.display='flex';
   $('worldName').textContent='DAILY KNOT';
@@ -1150,76 +1194,177 @@ function loadDaily(fresh){
 function updateHud(){
   if(state==='rush'&&rush){
     const alive=lines.filter(l=>!l.gone).length;
-    $('worldName').textContent='WAVE '+(rush.wave+1)+' · '+curTheme().name.toUpperCase();
-    $('lvlLabel').textContent='Rush · '+rush.cleared+' cleared';
-    $('leftLabel').textContent='· board '+alive+'/16';
+    $('worldName').textContent='WAVE '+Math.max(1,rush.wave)+' · '+curTheme().name.toUpperCase();
+    $('lvlLabel').textContent='Rush · '+rush.kills+' kills';
+    $('leftLabel').textContent='· 🧟 '+rush.monsters.length+' · ammo '+alive+'/16';
   }else{
     const left=lines.filter(l=>!l.gone).length;
     $('leftLabel').textContent='· '+left+' cord'+(left===1?'':'s');
   }
   $('starChip').textContent='★ '+save.wallet+(state==='play'&&starTotalInLevel?('  ('+starsGot+'/'+starTotalInLevel+')'):'');
-  $('heartChip').style.display=(state==='play'&&hearts>0)?'block':'none';
-  $('heartChip').textContent='❤️'.repeat(Math.max(0,Math.min(5,hearts)));
+  const showHearts=(state==='play'&&hearts>0)||(state==='rush'&&rush);
+  $('heartChip').style.display=showHearts?'block':'none';
+  $('heartChip').textContent='❤️'.repeat(Math.max(0,Math.min(5,state==='rush'&&rush?rush.lives:hearts)));
+  $('abilStars').textContent='★'+save.wallet;
   $('shieldChip').style.display=shield?'block':'none';
 }
 
-/* ---------- rush mode ---------- */
+/* ---------- rush mode: defend the companion ---------- */
+const MON={
+ blob:{hp:1,spd:26,r:11,col:'#b06ae0'},
+ runner:{hp:1,spd:52,r:9,col:'#ff9d4d'},
+ brute:{hp:3,spd:18,r:15,col:'#5aa7e6'},
+ boss:{hp:6,spd:13,r:20,col:'#ff5d7e'},
+};
 function startRush(){
   applyTheme(0);
   curLevel=0;
+  BW=W;BH=H;cam.x=0;cam.y=0;camV.x=0;camV.y=0;overviewUntil=0;
   far=2*Math.hypot(W,H);cell=cellFor(W,H);
   lines=[];anims=[];deathInfo=null;preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
   keysOwned=new Set();combo=0;starsGot=0;starTotalInLevel=0;
   dailyMode=false;curMod=null;hearts=0;
-  shield=shopLvl('guard')>=2;
-  rush={cleared:0,wave:0,spawnT:0.5,interval:4.2,starsRun:0,snags:0,idc:0,
-    rng:mulberry32((Date.now()&0xffffffff)>>>0)};
-  state='rush';petted=false;
+  setShield(save.shield||shopLvl('guard')>=2);
+  rush={wave:0,queue:[],monsters:[],monT:0,betweenT:0.6,lives:3,kills:0,score:0,
+    spawnT:0.4,stun:0,idc:0,rng:mulberry32((Date.now()&0xffffffff)>>>0)};
+  state='rush';
   $('hud').style.display='flex';$('gameBtns').style.display='flex';
   $('hintBar').style.display='none';
   hideAll();updateHud();refreshAbilBar();refreshGridBtn();
-  bannerMsg('⚡ RUSH','don\'t let the board fill up');
+  bannerMsg('⚡ RUSH','monsters incoming — defend '+(PETS[save.pet]?PETS[save.pet].name:'the line'));
   showCard('rush');
-  for(let i=0;i<3;i++)rushTrySpawn(true);
+  for(let i=0;i<4;i++)rushTrySpawn(true);
 }
 function rushDecorateSpawn(c){
-  const d=rushDiff(rush.cleared);
+  const d=rushDiff(rush.kills);
   c.id=rush.idc++;c.col=Math.floor(rush.rng()*5);
-  c.twoHead=false;c.gold=false;c.lockId=0;c.keyId=0;
-  c.star=rush.rng()<d.star?(0.35+rush.rng()*0.3):0;
-  c.shield=!c.star&&rush.rng()<d.shieldC;
+  c.twoHead=false;c.gold=false;c.lockId=0;c.keyId=0;c.star=0;
+  c.shield=rush.rng()<d.shieldC;
   c.ghost=rush.rng()<d.ghost;
-  c.ice=(!c.star&&!c.shield&&rush.rng()<d.ice)?2:0;
+  c.ice=(!c.shield&&rush.rng()<d.ice)?2:0;
   c.A=arcs(c.pts);c.gone=false;c.jig=0;c.born=timeNow;
 }
 function rushTrySpawn(silent){
   const board=lines.filter(l=>!l.gone);
-  if(board.length>=16){rushOver();return false;}
-  const c=rushSpawn(board,rush.cleared,W,H,cell,far,rush.rng);
-  if(!c){
-    if(board.length>=12){rushOver();return false;}
-    return false;
-  }
+  if(board.length>=16)return false;
+  const c=rushSpawn(board,rush.kills,W,H,cell,far,rush.rng);
+  if(!c)return false;
   rushDecorateSpawn(c);
   lines.push(c);
   if(!silent){const h=lineHead(c);burst(h.x,h.y,'rgba(255,255,255,0.6)',8,1.2);}
   updateHud();
   return true;
 }
+function spawnMonster(type,hpOver){
+  const m=MON[type];
+  rush.monsters.push({type,x:40+rush.rng()*(W-80),y:-24,
+    hp:hpOver||m.hp,maxhp:hpOver||m.hp,
+    spd:m.spd*(1+rush.wave*0.045),r:m.r,ph:rush.rng()*6.28});
+}
+function waveStart(){
+  rush.wave++;applyTheme(rush.wave-1);sfx.wave();
+  bannerMsg('WAVE '+rush.wave,rush.wave%5===0?'⚠ boss incoming':null);
+  const w=rush.wave;
+  rush.queue=[];
+  const count=4+Math.floor(w*1.6);
+  for(let i=0;i<count;i++){
+    let t='blob';
+    if(w>=2&&rush.rng()<0.3)t='runner';
+    if(w>=3&&rush.rng()<0.22)t='brute';
+    rush.queue.push(t);
+  }
+  if(w%5===0)rush.queue.push('boss');
+  rush.monT=1.1;
+  updateHud();
+}
+function flyHead(an){
+  const e=an.t/an.dur,k=e*e*(3-2*e);
+  return pathPt(an.ext,an.A,Math.min(an.total,k*an.total+an.L));
+}
+function rushTick(dt){
+  if(paused||state!=='rush')return;
+  rush.spawnT-=dt;
+  if(rush.spawnT<=0){rushTrySpawn();rush.spawnT=3.2;}
+  if(rush.queue.length){
+    rush.monT-=dt;
+    if(rush.monT<=0){
+      const t=rush.queue.shift();
+      spawnMonster(t,t==='boss'?6+rush.wave:0);
+      rush.monT=Math.max(0.45,1.5-rush.wave*0.05);
+      updateHud();
+    }
+  }else if(!rush.monsters.length){
+    rush.betweenT-=dt;
+    if(rush.betweenT<=0){waveStart();rush.betweenT=3;}
+  }
+  for(let i=rush.monsters.length-1;i>=0;i--){
+    const m=rush.monsters[i];
+    m.y+=m.spd*dt;
+    m.x=Math.max(16,Math.min(W-16,m.x+Math.sin(timeNow*2+m.ph)*14*dt));
+    if(m.y>H-150){
+      rush.monsters.splice(i,1);
+      if(shield){setShield(false);sfx.shieldSave();bannerMsg('🛡 SHIELD','breach absorbed');continue;}
+      rush.lives--;sfx.death();buzz(45);flashT=0.35;if(!RM)shake=0.7;
+      petMood('shock',1.3);updateHud();
+      if(rush.lives<=0){rushOver();return;}
+    }
+  }
+  for(const an of anims){
+    if(an.t>=an.dur)continue;
+    const hp=flyHead(an);
+    for(let i=rush.monsters.length-1;i>=0;i--){
+      const m=rush.monsters[i];
+      if(Math.hypot(hp.x-m.x,hp.y-m.y)<m.r+12){
+        if(an.hitSet&&an.hitSet.has(m))continue;
+        (an.hitSet=an.hitSet||new Set()).add(m);
+        m.hp--;burst(m.x,m.y,MON[m.type].col,10,2);sfx.crack();buzz(8);
+        if(m.hp<=0){
+          rush.monsters.splice(i,1);
+          rush.kills++;
+          rush.score+=(m.type==='brute'?3:m.type==='boss'?8:m.type==='runner'?2:1);
+          burst(m.x,m.y,'#ffd166',14,2.4);sfx.star();updateHud();
+        }
+      }
+    }
+  }
+}
+function drawMonsters(t){
+  for(const m of rush.monsters){
+    const wob=1+0.08*Math.sin(t*6+m.ph);
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.beginPath();ctx.ellipse(m.x,m.y+m.r*0.8,m.r*0.8,3,0,0,6.283);ctx.fill();
+    ctx.fillStyle=MON[m.type].col;
+    ctx.beginPath();ctx.ellipse(m.x,m.y,m.r*wob,m.r/wob,0,0,6.283);ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(m.x-m.r*0.32,m.y-2,m.r*0.22,0,6.283);ctx.fill();
+    ctx.beginPath();ctx.arc(m.x+m.r*0.32,m.y-2,m.r*0.22,0,6.283);ctx.fill();
+    ctx.fillStyle='#1a1a22';
+    ctx.beginPath();ctx.arc(m.x-m.r*0.32,m.y-1,m.r*0.1,0,6.283);ctx.fill();
+    ctx.beginPath();ctx.arc(m.x+m.r*0.32,m.y-1,m.r*0.1,0,6.283);ctx.fill();
+    if(m.maxhp>1){
+      ctx.fillStyle='#222';ctx.fillRect(m.x-10,m.y-m.r-9,20,3);
+      ctx.fillStyle='#7dffa0';ctx.fillRect(m.x-10,m.y-m.r-9,20*Math.max(0,m.hp)/m.maxhp,3);
+    }
+  }
+}
 function rushOver(){
   if(state!=='rush')return;
   state='rushover';
   sfx.death();if(!RM)shake=1;flashT=0.5;
-  if(rush.cleared>save.rushBest){save.rushBest=rush.cleared;persist();}
+  const earned=Math.min(10,Math.floor(rush.score/12));
+  if(earned>0){save.wallet+=earned;walletFx(earned);}
+  if(rush.kills>save.rushBest)save.rushBest=rush.kills;
+  persist();
   setTimeout(()=>{
-    $('rushStats').textContent='Cleared '+rush.cleared+' cords · survived '+(rush.wave+1)+' wave'+(rush.wave?'s':'')+' · earned '+rush.starsRun+'★'+(rush.snags?(' · '+rush.snags+' snags'):'');
-    $('rushBestLine').textContent='Best: '+save.rushBest+' cleared';
+    $('rushStats').textContent=rush.kills+' monsters slain · wave '+Math.max(1,rush.wave)+' · +'+earned+'★';
+    $('rushBestLine').textContent='Best: '+save.rushBest+' kills';
     show('rushov');
   },RM?250:600);
 }
 
 /* ---------- input: tap on release, hold for foresight ---------- */
 let pdown=null,holdTimer=null;
+function toWorld(x,y){return {x:(x-view.ox)/view.s,y:(y-view.oy)/view.s};}
 function pickLine(x,y){
   const alive=lines.filter(l=>!l.gone);
   let best=null,bestD=26;
@@ -1234,38 +1379,64 @@ function pickLine(x,y){
 cv.addEventListener('pointerdown',e=>{
   if(state!=='play'&&state!=='rush')return;
   ac();if(save.music)startMusic();
-  const l=pickLine(e.clientX,e.clientY);
-  pdown={x:e.clientX,y:e.clientY,line:l,previewed:false};
+  camV.x=0;camV.y=0;
+  const wpt=toWorld(e.clientX,e.clientY);
+  const l=pickLine(wpt.x,wpt.y);
+  pdown={x:e.clientX,y:e.clientY,line:l,previewed:false,panned:false,
+    camx:cam.x,camy:cam.y,lx:e.clientX,ly:e.clientY,lt:performance.now(),vx:0,vy:0};
   clearTimeout(holdTimer);
-  if(l&&!phaseArmed&&!foreArmed&&save.wallet>=abilCost('fore')&&abilUnlocked(ABIL[0])
+  if(l&&!phaseArmed&&!foreArmed&&timeNow>=overviewUntil
+     &&save.wallet>=abilCost('fore')&&abilUnlocked(ABIL[0])
      &&!(curMod&&curMod.key==='nofore')){
     holdTimer=setTimeout(()=>{
-      if(!pdown)return;
+      if(!pdown||pdown.panned)return;
       pdown.previewed=true;
-      save.wallet-=abilCost('fore');persist();
-      sfx.abil();updateHud();refreshAbilBar();
+      spend(abilCost('fore'));sfx.abil();
       const remaining=lines.filter(q=>!q.gone);
       preview={line:l,until:timeNow+foreDur(),st:freeStatus(l,remaining,far,keysOwned)};
     },330);
   }
 });
 cv.addEventListener('pointermove',e=>{
-  if(pdown&&Math.hypot(e.clientX-pdown.x,e.clientY-pdown.y)>22){pdown=null;clearTimeout(holdTimer);}
+  if(!pdown)return;
+  if(!pdown.panned&&Math.hypot(e.clientX-pdown.x,e.clientY-pdown.y)>14){
+    pdown.panned=true;clearTimeout(holdTimer);
+  }
+  if(pdown.panned&&timeNow>=overviewUntil){
+    cam.x=pdown.camx-(e.clientX-pdown.x);
+    cam.y=pdown.camy-(e.clientY-pdown.y);
+    clampCam();
+    const now=performance.now(),dm=Math.max(1,now-pdown.lt);
+    pdown.vx=(pdown.lx-e.clientX)/dm*1000;
+    pdown.vy=(pdown.ly-e.clientY)/dm*1000;
+    pdown.lx=e.clientX;pdown.ly=e.clientY;pdown.lt=now;
+  }
 });
 cv.addEventListener('pointerup',e=>{
   clearTimeout(holdTimer);
-  if(!pdown||pdown.previewed){pdown=null;return;}
-  const l=pdown.line;pdown=null;
+  const pd=pdown;pdown=null;
+  if(!pd||pd.previewed)return;
   if(state!=='play'&&state!=='rush')return;
+  if(pd.panned){
+    camV.x=Math.max(-1400,Math.min(1400,pd.vx));
+    camV.y=Math.max(-1400,Math.min(1400,pd.vy));
+    return;
+  }
   if(save.pet&&e.clientY>H-160&&Math.hypot(e.clientX-pet.x,e.clientY-(pet.y-12))<40){
     petMood('joy',1.6);sfx.pet();
     for(let i=0;i<5;i++)parts.push({x:pet.x+(Math.random()-0.5)*22,y:pet.y-32,
-      vx:(Math.random()-0.5)*0.6,vy:-0.8-Math.random()*0.6,life:0.9,t:0,col:'#fff',sz:12,g:-0.01,tx:'💗'});
-    if(!petted){petted=true;save.wallet++;persist();updateHud();refreshAbilBar();
-      bannerMsg('+1★',(PETS[save.pet]?PETS[save.pet].name:'Your pet')+' loves you');}
+      vx:(Math.random()-0.5)*0.6,vy:-0.8-Math.random()*0.6,life:0.9,t:0,col:'#fff',sz:12,g:-0.01,tx:'💗',scr:true});
+    if(Date.now()-(save.petAt||0)>10*60*1000){
+      save.petAt=Date.now();gain(1);
+      bannerMsg('+1★',(PETS[save.pet]?PETS[save.pet].name:'Your pet')+' loves you');
+    }
     return;
   }
-  if(!l){burst(e.clientX,e.clientY,'rgba(255,255,255,0.5)',5,1.2);
+  if(timeNow<overviewUntil){overviewUntil=0;return;}
+  if(state==='rush'&&rush&&timeNow<rush.stun){if(pd.line)pd.line.jig=0.6;return;}
+  const l=pd.line;
+  if(!l){const wpt=toWorld(e.clientX,e.clientY);
+    burst(wpt.x,wpt.y,'rgba(255,255,255,0.5)',5,1.2);
     if(phaseArmed||foreArmed){phaseArmed=false;foreArmed=false;refreshAbilBar();}return;}
   handleTap(l);
 });
@@ -1274,16 +1445,16 @@ cv.addEventListener('pointercancel',()=>{pdown=null;clearTimeout(holdTimer);});
 function handleTap(l){
   if(foreArmed){
     const cost=abilCost('fore');
-    if(save.wallet<cost){foreArmed=false;refreshAbilBar();bannerMsg('NEED '+cost+'★');return;}
-    save.wallet-=cost;persist();foreArmed=false;sfx.abil();updateHud();refreshAbilBar();
+    if(save.wallet<cost){foreArmed=false;refreshAbilBar();bannerMsg('NEED '+cost+'★','you have '+save.wallet+'★');return;}
+    spend(cost);foreArmed=false;sfx.abil();
     const remaining=lines.filter(q=>!q.gone);
     preview={line:l,until:timeNow+foreDur(),st:freeStatus(l,remaining,far,keysOwned)};
     return;
   }
   if(phaseArmed){
     const cost=abilCost('phase');
-    if(save.wallet<cost){phaseArmed=false;refreshAbilBar();bannerMsg('NEED '+cost+'★');return;}
-    save.wallet-=cost;persist();
+    if(save.wallet<cost){phaseArmed=false;refreshAbilBar();bannerMsg('NEED '+cost+'★','you have '+save.wallet+'★');return;}
+    spend(cost);
     phaseArmed=false;
     sfx.abil();l.ice=0;
     bannerMsg('🚀 PHASE SHOT');
@@ -1301,17 +1472,17 @@ function handleTap(l){
   const st=freeStatus(l,remaining,far,keysOwned);
   if(st.state==='locked'){l.jig=1;sfx.rattle();return;}
   if(st.state==='free'){fire(l,st.which,false);return;}
-  if(shield){shield=false;sfx.shieldSave();l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
-    bannerMsg('🛡 SHIELD SPENT','that path was blocked');updateHud();refreshAbilBar();return;}
+  if(shield){setShield(false);sfx.shieldSave();l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
+    bannerMsg('🛡 SHIELD SPENT','that path was blocked');refreshAbilBar();return;}
   if(state==='play'&&hearts>1){
     hearts--;deaths++;buzz(25);sfx.shieldSave();petMood('shock',0.8);
     l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
     bannerMsg('💔 -1 HEART','that path was blocked');
     updateHud();return;}
   if(state==='rush'){
-    rush.snags++;sfx.death();if(!RM)shake=0.6;flashT=0.3;petMood('shock',1);
-    bannerMsg('SNAG!','+2 cords');
-    rushTrySpawn();rushTrySpawn();
+    rush.stun=timeNow+0.7;sfx.rattle();if(!RM)shake=0.4;
+    l.bounce={t:0,dist:Math.min(40,st.hit.dist*0.5)};
+    bannerMsg('TANGLED!','0.7s stun',true);
     return;
   }
   die(l,st.hit);
@@ -1323,11 +1494,14 @@ function fire(l,which,phased){
   comboT=timeNow;
   sfx.pluck(combo-1);sfx.whoosh();
   if(combo>=3)bannerMsg('COMBO ×'+combo,null,true);
-  if(l.star){starsGot++;save.wallet++;if(rush)rush.starsRun++;persist();sfx.star();
+  if(l.star){starsGot++;gain(1);sfx.star();
     const sp=pathPt(l.pts,l.A,l.A[l.A.length-1]*l.star);
     burst(sp.x,sp.y,'#ffd166',16,2);}
-  if(phased&&shopLvl('phase')>=1){save.wallet++;if(rush)rush.starsRun++;persist();sfx.star();}
-  if(l.shield){shield=true;sfx.shieldGet();bannerMsg('🛡 SHIELD','one mistake forgiven');}
+  if(phased&&shopLvl('phase')>=1){gain(1);sfx.star();}
+  if(l.shield){
+    if(shield){gain(1);bannerMsg('🛡 FULL','+1★',true);}
+    else{setShield(true);sfx.shieldGet();bannerMsg('🛡 SHIELD','carried between knots');}
+  }
   if(l.keyId){keysOwned.add(l.keyId);sfx.lockOpen();
     const tgt=lines.find(q=>q.lockId===l.keyId&&!q.gone);
     if(tgt){const h=lineHead(tgt);burst(h.x,h.y,'#ffe08a',14,1.6);}}
@@ -1338,24 +1512,17 @@ function fire(l,which,phased){
   const m=Math.hypot(b.x-a.x,b.y-a.y)||1;
   const dir={x:(b.x-a.x)/m,y:(b.y-a.y)/m};
   const ext=pts.concat([rayEndPt(b,dir,far)]);
-  if(save.pet&&pet.y>0&&distPtSeg({x:pet.x,y:pet.y-14},b,ext[ext.length-1])<46){
+  if(save.pet&&pet.y>0&&distPtSeg({x:pet.x+cam.x,y:pet.y-14+cam.y},b,ext[ext.length-1])<46){
     const pc=cordCol(l.col);
     setTimeout(()=>{if(!save.pet)return;
       petMood('shock',1.1);buzz(15);sfx.wave();
-      burst(pet.x,pet.y-24,pc,14,2.6);
-      burst(pet.x,pet.y-28,'#ffd166',10,2.1);
-      burst(pet.x,pet.y-18,'#ffffff',8,1.6);
+      burst(pet.x,pet.y-24,pc,14,2.6,true);
+      burst(pet.x,pet.y-28,'#ffd166',10,2.1,true);
+      burst(pet.x,pet.y-18,'#ffffff',8,1.6,true);
     },240);
   }
   const A=arcs(ext),L=arcs(pts)[pts.length-1],total=A[A.length-1];
   anims.push({line:l,ext,A,L,total,t:0,dur:RM?0.35:(0.55+Math.min(0.8,total/1400)),phased});
-  if(state==='rush'){
-    rush.cleared++;
-    const nw=Math.floor(rush.cleared/10);
-    if(nw!==rush.wave){rush.wave=nw;sfx.wave();bannerMsg('WAVE '+(nw+1));
-      applyTheme(nw);rush.spawnT+=0.8;}
-    rush.interval=Math.max(1.3,4.2-rush.cleared*0.05);
-  }
   updateHud();refreshAbilBar();
   if(cascLeft>0)setTimeout(cascStep,170);
 }
@@ -1389,7 +1556,7 @@ function checkClear(){
     if(save.goal.date!==dstr)save.goal={date:dstr,cleared:0,claimed:false};
     save.goal.cleared++;
     let goalMsg='';
-    if(!save.goal.claimed&&save.goal.cleared>=3){save.goal.claimed=true;save.wallet+=5;goalMsg=' · 🎯 daily goal +5★!';}
+    if(!save.goal.claimed&&save.goal.cleared>=3){save.goal.claimed=true;save.wallet+=5;walletFx(5);goalMsg=' · 🎯 daily goal +5★!';}
     else if(!save.goal.claimed)goalMsg=' · 🎯 '+save.goal.cleared+'/3';
     sfx.fanfare();confetti();petMood('joy',2.2);buzz([12,40,12]);
     if(!save.hinted){save.hinted=true;$('hintBar').style.display='none';}
@@ -1400,7 +1567,7 @@ function checkClear(){
         save.daily.streak=(save.daily.last===yestStr())?save.daily.streak+1:1;
         save.daily.last=dstr;
         reward=5+Math.min(5,save.daily.streak-1);
-        save.wallet+=reward;
+        save.wallet+=reward;walletFx(reward);
       }
       persist();
       setTimeout(()=>{
@@ -1422,7 +1589,7 @@ function checkClear(){
     if(firstTime)bonus+=1;
     if(deaths===0)bonus+=(shopLvl('prosp')>=1?3:2);
     if(curLevel%10===0)bonus+=(shopLvl('prosp')>=2?5:3);
-    save.wallet+=bonus;
+    save.wallet+=bonus;if(bonus>0)walletFx(bonus);
     persist();
     setTimeout(()=>{
       if(curLevel===100&&!save.victory){save.victory=true;persist();
@@ -1471,13 +1638,30 @@ function arrowHead(p,dir,col,alpha,scale){
   tri(p.x+dir.x*L*0.45,p.y+dir.y*L*0.45,dir,nx,ny,L*0.35,Wd*0.3);
   ctx.globalAlpha=1;
 }
-function drawGrid(){
+function drawGrid(x0,y0,x1,y1){
   const sk=curSkin();
+  x0=Math.max(0,Math.floor(x0/cell)*cell);y0=Math.max(0,Math.floor(y0/cell)*cell);
+  x1=Math.min(BW,x1);y1=Math.min(BH,y1);
   ctx.strokeStyle=sk.grid;ctx.lineWidth=1;
-  for(let x=0;x<=W;x+=cell){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<=H;y+=cell){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  for(let x=x0;x<=x1;x+=cell){ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,y1);ctx.stroke();}
+  for(let y=y0;y<=y1;y+=cell){ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke();}
   ctx.fillStyle=sk.dot;
-  for(let x=0;x<=W;x+=cell)for(let y=0;y<=H;y+=cell)ctx.fillRect(x-1,y-1,2,2);
+  for(let x=x0;x<=x1;x+=cell)for(let y=y0;y<=y1;y+=cell)ctx.fillRect(x-1,y-1,2,2);
+}
+function drawMinimap(){
+  if(BW<=W+4&&BH<=H+4)return;
+  if(timeNow<overviewUntil)return;
+  const mw=64,mh=Math.min(96,Math.round(mw*BH/BW));
+  const mx=(W-mw)/2,my=12;
+  ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(mx,my,mw,mh);
+  ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.strokeRect(mx,my,mw,mh);
+  for(const l of lines)if(!l.gone){const h=lineHead(l);
+    ctx.fillStyle=cordCol(l.col);
+    ctx.fillRect(mx+h.x/BW*mw-1,my+h.y/BH*mh-1,2.4,2.4);}
+  ctx.strokeStyle='rgba(255,255,255,0.75)';
+  const vx=Math.max(0,cam.x)/BW*mw, vy=Math.max(0,cam.y)/BH*mh;
+  const vw=Math.min(W,BW)/BW*mw, vh=Math.min(H,BH)/BH*mh;
+  ctx.strokeRect(mx+vx,my+vy,vw,vh);
 }
 function emoji(txt,x,y,size,alpha){
   ctx.globalAlpha=alpha;ctx.font=size+'px sans-serif';
@@ -1592,7 +1776,7 @@ function drawDeco(){
 
 /* ---------- companion pet ---------- */
 let pet={x:0,y:0,tx:0,dir:1,mode:'idle',mt:0,blink:0,bt:2};
-let petted=false,petPickMode='create',paused=false;
+let petPickMode='create',paused=false;
 function petMood(m,d){if(!save.pet)return;pet.mode=m;pet.mt=d;}
 function updatePet(dt){
   if(!save.pet)return;
@@ -1713,7 +1897,7 @@ function drawAcc(g,key,sp,t){
 }
 function drawPet(t){if(pet.y>0)renderPet(ctx,pet.x,pet.y,1,t);}
 
-let last=0;
+let last=0,view={s:1,ox:0,oy:0};
 function frame(ts){
   requestAnimationFrame(frame);
   const dt=Math.min(0.05,(ts-last)/1000||0.016);last=ts;timeNow+=dt;
@@ -1722,27 +1906,36 @@ function frame(ts){
     const sk=curSkin();
     if(sk.deco==='dust'&&Math.random()<0.12)
       parts.push({x:Math.random()*W,y:H+8,vx:(Math.random()-0.5)*0.2,vy:-0.25-Math.random()*0.3,
-        life:5,t:0,col:cordCol(0)+'55',sz:1.5+Math.random()*2,g:0});
+        life:5,t:0,col:cordCol(0)+'55',sz:1.5+Math.random()*2,g:0,scr:true});
     else if(sk.deco==='embers'&&Math.random()<0.15)
       parts.push({x:Math.random()*W,y:H+8,vx:(Math.random()-0.5)*0.35,vy:-0.5-Math.random()*0.6,
-        life:3.5,t:0,col:['#ff9a3d','#ffc46b','#ff6b3d'][Math.floor(Math.random()*3)],sz:1.5+Math.random()*2,g:-0.004});
+        life:3.5,t:0,col:['#ff9a3d','#ffc46b','#ff6b3d'][Math.floor(Math.random()*3)],sz:1.5+Math.random()*2,g:-0.004,scr:true});
     else if(sk.deco==='bubbles'&&Math.random()<0.08)
       parts.push({x:Math.random()*W,y:H+12,vx:(Math.random()-0.5)*0.3,vy:-0.6-Math.random()*0.5,
-        life:4,t:0,col:'rgba(255,255,255,0.35)',sz:3+Math.random()*5,g:0});
+        life:4,t:0,col:'rgba(255,255,255,0.35)',sz:3+Math.random()*5,g:0,scr:true});
     else if(sk.deco==='stars'&&Math.random()<0.006)
       parts.push({x:Math.random()*W,y:Math.random()*H*0.5,vx:3+Math.random()*3,vy:1.5+Math.random()*1.5,
-        life:0.7,t:0,col:'#bfefff',sz:2,g:0});
+        life:0.7,t:0,col:'#bfefff',sz:2,g:0,scr:true});
   }
   stepParts(dt);
-  if(state==='rush'&&rush&&!paused){
-    rush.spawnT-=dt;
-    if(rush.spawnT<=0){rushTrySpawn();rush.spawnT=rush.interval;}
+  if(state==='rush'&&rush)rushTick(dt);
+  if(!paused&&(Math.abs(camV.x)>1||Math.abs(camV.y)>1)){
+    cam.x+=camV.x*dt;cam.y+=camV.y*dt;
+    const k=Math.exp(-5*dt);camV.x*=k;camV.y*=k;clampCam();
   }
   if(shake>0){shake=Math.max(0,shake-dt*3);
     ctx.save();ctx.translate((Math.random()-0.5)*14*shake,(Math.random()-0.5)*14*shake);}
   if(state!=='title'){
     drawDeco();
-    if(gridVisible())drawGrid();
+    const ov=timeNow<overviewUntil;
+    if(ov){view.s=Math.min(W/BW,(H-70)/BH)*0.96;
+      view.ox=(W-BW*view.s)/2;view.oy=(H-BH*view.s)/2+14;}
+    else{view.s=1;view.ox=-cam.x;view.oy=-cam.y;}
+    ctx.save();ctx.translate(view.ox,view.oy);ctx.scale(view.s,view.s);
+    if(gridVisible()){
+      if(ov)drawGrid(0,0,BW,BH);
+      else drawGrid(cam.x-4,cam.y-4,cam.x+W+4,cam.y+H+4);
+    }
     const radarOn=timeNow<radarUntil;
     let freeSet=null;
     if(radarOn){freeSet=new Set();
@@ -1756,8 +1949,12 @@ function frame(ts){
       if(!paused)an.t+=dt;
       if(an.t>=an.dur){anims.splice(i,1);checkClear();continue;}
       drawFly(an,timeNow);}
+    if(state==='rush'&&rush)drawMonsters(timeNow);
     drawPreview();
     if(state==='dying')drawDeath();
+    drawParts(false);
+    ctx.restore();
+    if(state!=='rush')drawMinimap();
     updatePet(dt);drawPet(timeNow);
   }
   if(scr.comp.classList.contains('show')){
@@ -1765,7 +1962,7 @@ function frame(ts){
     pcx.clearRect(0,0,220,150);
     renderPet(pcx,110,122,2.1,timeNow);
   }
-  drawParts();
+  drawParts(true);
   if(shake>0)ctx.restore();
   if(flashT>0){flashT-=dt;ctx.fillStyle='rgba(255,60,90,'+(flashT*0.55)+')';ctx.fillRect(0,0,W,H);}
 }
@@ -1776,22 +1973,40 @@ function abilTap(a){
   if(state!=='play'&&state!=='rush')return;
   ac();if(save.music)startMusic();
   const cost=abilCost(a.key);
+  const broke=()=>bannerMsg('NEED '+cost+'★','you have '+save.wallet+'★');
   if(a.key==='fore'){
     if(curMod&&curMod.key==='nofore'){bannerMsg('👁 SEALED','no foresight this knot');return;}
     if(foreArmed){foreArmed=false;refreshAbilBar();return;}
-    if(save.wallet<cost){bannerMsg('NEED '+cost+'★','collect stars on cords');return;}
+    if(save.wallet<cost){broke();return;}
     foreArmed=true;phaseArmed=false;sfx.abil();
     bannerMsg('👁 ARMED','tap a cord to preview its path');
     refreshAbilBar();return;
   }
   if(a.key==='phase'){
     if(phaseArmed){phaseArmed=false;refreshAbilBar();return;}
-    if(save.wallet<cost){bannerMsg('NEED '+cost+'★','collect stars on cords');return;}
+    if(save.wallet<cost){broke();return;}
     phaseArmed=true;foreArmed=false;bannerMsg('🚀 ARMED','tap any cord');sfx.abil();refreshAbilBar();return;
   }
-  if(save.wallet<cost){bannerMsg('NEED '+cost+'★','collect stars on cords');return;}
-  save.wallet-=cost;persist();updateHud();
+  if(a.key==='shock'){
+    const remaining=lines.filter(q=>!q.gone);
+    const frees=[];
+    for(const l of remaining){
+      if(l.ice>0)continue;
+      const st=freeStatus(l,remaining,far,keysOwned);
+      if(st.state==='free')frees.push([l,st.which]);
+    }
+    if(!frees.length){bannerMsg('💥 NOTHING FREE','no clear cords to fire');return;}
+    if(save.wallet<cost){broke();return;}
+    spend(cost);sfx.abil();buzz([10,30,10]);if(!RM)shake=0.6;
+    bannerMsg('💥 SHOCKWAVE',frees.length+' cords');
+    for(const [l,w] of frees){fire(l,w,false);if(shopLvl('shock')>=1)gain(1);}
+    return;
+  }
+  if(save.wallet<cost){broke();return;}
+  spend(cost);
   if(a.key==='radar'){radarUntil=timeNow+radarDur();sfx.abil();}
+  if(a.key==='over'){overviewUntil=timeNow+overDur();sfx.abil();
+    bannerMsg('🔭 OVERVIEW','tap to return',true);}
   if(a.key==='casc'){cascLeft=cascChain();sfx.abil();bannerMsg('🌊 CASCADE');cascStep();}
   refreshAbilBar();
 }
@@ -2075,7 +2290,7 @@ $('btnSfx2').addEventListener('click',()=>{save.sfx=!save.sfx;persist();syncSoun
 $('btnDeadHome').addEventListener('click',()=>{slotResetView();show('title');});
 $('btnClearHome').addEventListener('click',()=>{slotResetView();show('title');});
 $('btnHome').addEventListener('click',()=>{
-  if(state==='rush'&&rush&&rush.cleared>save.rushBest){save.rushBest=rush.cleared;persist();}
+  if(state==='rush'&&rush&&rush.kills>save.rushBest){save.rushBest=rush.kills;persist();}
   slotResetView();show('title');
 });
 
@@ -2101,7 +2316,7 @@ $('btnSfxT').addEventListener('click',()=>{save.sfx=!save.sfx;persist();syncSoun
 
 let rsT=null;
 addEventListener('resize',()=>{fit();
-  if(state==='play'){clearTimeout(rsT);rsT=setTimeout(()=>{loadLevel(curLevel,false);bannerMsg('RESIZED','knot re-tangled');},250);}
+  if(state==='play'||state==='dying'||state==='cleared'){clampCam();}
   else if(state==='rush'){clearTimeout(rsT);rsT=setTimeout(()=>startRush(),250);}});
 
 function refreshTitle(){
