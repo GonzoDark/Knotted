@@ -44,6 +44,8 @@
     background:var(--gold);color:#1a1a1a;font-size:10px;font-weight:800;display:flex;
     align-items:center;justify-content:center;padding:0 4px;}
   .ibtn.off .badge{background:#555;color:#ccc;}
+  .badge.cant{background:#5a2233;color:#ff9fb8;}
+  .pchip{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(255,209,102,0.14);color:var(--gold);font-weight:800;font-size:11px;}
   .ibtn.armed{border-color:#7dffd4;box-shadow:0 0 14px rgba(125,255,212,.6);}
   #hintBar{position:fixed;left:50%;transform:translateX(-50%);
     bottom:calc(env(safe-area-inset-bottom,0px) + 70px);z-index:5;
@@ -144,6 +146,7 @@
 <div class="hud" id="hud" style="display:none;">
   <div class="chip"><span id="worldName">MEADOW DAWN</span><br><b id="lvlLabel">Knot 1</b> <span id="leftLabel" style="color:var(--dim);font-size:12px;">· 3 cords</span></div>
   <div id="rightChips">
+    <div class="chip" id="killChip" style="display:none;">⚡ 0</div>
     <div class="chip" id="starChip">★ 0</div>
     <div class="chip" id="heartChip" style="display:none;">❤️</div>
     <div class="chip" id="shieldChip">🛡 Shield ready</div>
@@ -162,6 +165,7 @@
 </div>
 
 <div class="btnrow" id="gameBtns" style="display:none;">
+  <button class="ibtn" id="btnUndo" aria-label="Undo last fire" style="display:none;">↩</button>
   <button class="ibtn" id="btnPause" aria-label="Pause menu">☰</button>
 </div>
 
@@ -308,8 +312,16 @@
     <button class="ibtn" id="btnGrid" aria-label="Toggle grid" style="display:none;">⌗</button>
     <button class="ibtn" id="btnMusic" aria-label="Toggle music">♪</button>
     <button class="ibtn" id="btnSfx2" aria-label="Toggle sound effects">✦</button>
+    <button class="ibtn" id="btnCb" aria-label="Toggle colorblind-friendly cord colors" style="font-size:13px;font-weight:800;">CB</button>
   </div>
+  <button class="ghostbtn" id="btnGuide">📖 Field guide</button>
   <button class="ghostbtn" id="btnHome">⌂ Main menu</button>
+</div>
+
+<div class="screen" id="guideScr" style="justify-content:flex-start;overflow-y:auto;padding:26px 16px 40px;">
+  <h2 style="margin:0 0 4px;font-size:22px;letter-spacing:3px;">📖 FIELD GUIDE</h2>
+  <div id="guideList" style="width:100%;max-width:420px;"></div>
+  <button class="ghostbtn" id="btnGuideBack" style="margin-top:10px;">← Back</button>
 </div>
 
 <div class="screen" id="petScr">
@@ -338,6 +350,8 @@
 "use strict";
 /* ================= PURE LOGIC (also runs headless in Node for tests) ================= */
 
+/* Deterministic 32-bit PRNG. Seeded per rush run / daily so a given seed
+   always produces the same monster order (fair retries, shareable dailies). */
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 
 function segInt(a,b,c,d){
@@ -626,6 +640,10 @@ function genLevel(L,W,H,seedBase){
   return {lines,P,far,cell,BW:W,BH:H};
 }
 
+/* Core puzzle rule: can this cord exit the board?
+   Walks the cord's exit ray and reports 'free' | 'blocked' | 'locked',
+   plus which end ('A'/'B') can move. Everything else (radar highlights,
+   cascade, shockwave, death checks) is built on this single source of truth. */
 function freeStatus(l,remaining,far,keysOwned){
   if(l.lockId&&!keysOwned.has(l.lockId))return {state:'locked'};
   const hitA=rayHit(l,'A',remaining,9,far);
@@ -702,6 +720,7 @@ const MECH={
  w6:{icon:"↔️",name:"Two-headed cords",desc:"Cords with two arrowheads can exit either way. They only need one clear path."},
  w7:{icon:"🧊",name:"Frozen cords",desc:"Iced cords need a tap to crack the ice first, then a second tap to fire. Cracking is always safe."},
  w8:{icon:"🌪",name:"Dense knots",desc:"More cords, more locks, tighter tangles. Trace carefully before you tap."},
+ combo:{icon:"🔥",name:"Combo!",desc:"Fire cords back-to-back — each within 2 seconds of the last — to build a 🔥 combo. Every 5th link pays +1★. Waiting too long, or snagging a cord, breaks the chain. The meter under the HUD shows your time."},
  w10:{icon:"🕳",name:"The Void",desc:"Everything you've learned, in the dark. Ten final knots… or are they?"},
  pan:{icon:"🖐",name:"Bigger knots",desc:"This knot is larger than your screen. Drag anywhere to pan around it — the minimap up top shows where you are. 🔭 Overview (knot 35) shows it all at once."},
  ab_fore:{icon:"👁",name:"Foresight unlocked",desc:"Tap 👁 to arm it, then tap any cord to preview its exit path — or just press & hold a cord. Green means clear, red shows the blocker. Costs ★ per use."},
@@ -781,7 +800,9 @@ const SKINS={
    grid:'rgba(255,255,255,0.14)',dot:'rgba(255,255,255,0.22)',deco:'none',bpm:104,wave:'triangle',mvol:0.05},
 };
 function curSkin(){return SKINS[save.skin]||SKINS.loom;}
-function cordCol(i){const sk=curSkin();
+/* Okabe-Ito palette: distinguishable under all common color-vision deficiencies. */
+const CBCORDS=['#0072B2','#E69F00','#009E73','#CC79A7','#F0E442'];
+function cordCol(i){if(save.cbMode)return CBCORDS[i];const sk=curSkin();
   return sk.multi?THEMES[themeIdxNow%10].cords[i]:sk.cords[i];}
 const PETS={
  cat:{name:'Miso',emoji:'🐱',body:'#e8a86b',belly:'#f7dcbb',ear:'tri',tail:'curve',acY:0,imm:'ice',flavor:'Naps professionally. Winter coat: ice-proof.'},
@@ -807,6 +828,8 @@ const BREEDS={
       {key:'cinder',name:'Cinder',body:'#d1543a',belly:'#f4c9a8',price:50},
       {key:'glacier',name:'Glacier',body:'#7ab8e8',belly:'#d6ecfa',price:50}],
 };
+/* PETS[species] merged with the selected BREED's name/colors.
+   Species decides immunities & milestone gifts; breed is cosmetic. */
 function petSpec(){
   const base=PETS[save.pet];if(!base)return base;
   const br=(BREEDS[save.pet]||[]).find(b=>b.key===save.petBreed);
@@ -827,11 +850,11 @@ const WARDROBE=[
  {key:'acc_crown',icon:'👑',name:'Tiny Crown',price:90},
 ];
 const ACC_PAL={
- acc_bow:['#ff6fa5','#4da3ff','#6dea7f','#c77dff','#ffd166'],
- acc_scarf:['#d24545','#4d7fd2','#3fae6e','#8a5fd1','#2fbfb0'],
- acc_hat:['#1c1c24','#5a2238','#1f3a5f','#254a2c','#6e3d14'],
- acc_shade:['#14161e','#2a4d8f','#7a2440','#1e5a3a','#6a4a12'],
- acc_crown:['#ffd166','#d8dee8','#ff9fb8','#7ddfff','#9dff8a'],
+ acc_bow:['#ff6fa5','#e63946','#4da3ff','#6dea7f','#c77dff','#ffd166','#2fbfb0','#f2f4f8'],
+ acc_scarf:['#d24545','#e07a2e','#ffd166','#4d7fd2','#3fae6e','#8a5fd1','#2fbfb0','#3a3d46'],
+ acc_hat:['#1c1c24','#5a2238','#1f3a5f','#254a2c','#6e3d14','#7d3ba3','#0e6e5c','#8a8f9c'],
+ acc_shade:['#14161e','#b8323f','#2a4d8f','#7a2440','#1e5a3a','#6a4a12','#7d3ba3','#d8dee8'],
+ acc_crown:['#ffd166','#e63946','#d8dee8','#ff9fb8','#7ddfff','#9dff8a','#7d3ba3','#2fbfb0'],
 };
 function shade(hex,f){const n=parseInt(hex.slice(1),16);
   return 'rgb('+Math.round(((n>>16)&255)*f)+','+Math.round(((n>>8)&255)*f)+','+Math.round((n&255)*f)+')';}
@@ -875,6 +898,8 @@ const TROPHIES=[
  {key:'hatch',e:'🥚',name:'New Friend',desc:'Hatch a sidekick in Rush',feat:'hatch'},
  {key:'streak3',e:'📅',name:'Habit Forming',desc:'3-day daily streak',test:()=>save.daily.streak>=3},
 ];
+/* Trophies come in two kinds: `test` fns derive from save (retroactive),
+   `feat` flags are set at the moment of the deed via feat(). */
 function trophyDone(tr){return tr.feat?!!(save.feats&&save.feats[tr.feat]):!!tr.test();}
 function feat(k,label){if(save.feats[k])return;save.feats[k]=1;persist();sfx.gold();bannerMsg('🏆 TROPHY',label);}
 const POW={freeze:{e:'❄',col:'#7dd8ff'},magnet:{e:'🧲',col:'#ff7d5a'},zap:{e:'⚡',col:'#ffe45d'}};
@@ -906,7 +931,7 @@ function fit(){W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;cv.styl
 fit();
 
 const $=id=>document.getElementById(id);
-const scr={title:$('titleScr'),dead:$('deadScr'),clear:$('clearScr'),rushov:$('rushScr'),victory:$('victoryScr'),select:$('select'),shop:$('shop'),theme:$('themeScr'),looms:$('slotsScr'),comp:$('compScr'),pause:$('pauseScr'),pets:$('petScr'),reset:$('resetScr'),mech:$('mech')};
+const scr={title:$('titleScr'),dead:$('deadScr'),clear:$('clearScr'),rushov:$('rushScr'),victory:$('victoryScr'),select:$('select'),shop:$('shop'),theme:$('themeScr'),looms:$('slotsScr'),comp:$('compScr'),pause:$('pauseScr'),pets:$('petScr'),reset:$('resetScr'),guide:$('guideScr'),mech:$('mech')};
 const pcx=$('petCv').getContext('2d');
 (function(){const c=$('petCv'),d=Math.min(2,devicePixelRatio||1);
   c.width=220*d;c.height=150*d;c.style.width='220px';c.style.height='150px';
@@ -918,6 +943,36 @@ function dayHash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCo
 function show(name){for(const k in scr)scr[k].classList.toggle('show',k===name);}
 function hideAll(){show('none');paused=false;}
 
+/* ============================================================================
+   KNOTTED — a single-file, mobile-first untangling puzzle + arcade defense
+   ----------------------------------------------------------------------------
+   ARCHITECTURE (one <script>, no dependencies, canvas + DOM screens)
+
+     data          CONFIG TABLES: THEMES/SKINS, MON(sters), PETS/BREEDS,
+                   ACC/WARDROBE (+ACC_PAL colors), TRAILS, SIDEKICKS,
+                   TROPHIES, POW(er-ups), SHOP, ABIL(ities), MECH cards,
+                   MUSIC (one tune per theme)
+     persistence   `save` object per loom (slot); persist()/loadSlot();
+                   migrations keep old saves valid — never rename fields,
+                   only add with ||-defaults in the migration block
+     audio         tiny WebAudio synth: tone() + sfx.*; musicTick()
+                   schedules the looping 32-step tune for the active theme
+     state         `state` = 'title'|'play'|'cleared'|'dying'|'rush'…;
+                   `lines` (cords) + `anims` (cords flying out) in campaign;
+                   `rush` object owns everything arcade-mode
+     game loop     frame() -> update (input/ticks) -> draw (world under
+                   ctx transform, then screen-space parts/HUD)
+     rendering     drawLine/drawFly (cords), drawRush (arcade),
+                   renderPet/renderSidekick/drawAcc (companion)
+     UI screens    DOM sections toggled by show(); build*() fns re-render
+                   a screen from `save` every time it opens (no dom state)
+
+   CONVENTIONS
+     - All gameplay geometry is in world units on a W x H canvas.
+     - RM = "reduced motion" flag: particle counts and anim durations shrink.
+     - Star (★) economy: wallet is spendable; save.stars is per-level record.
+     - rng: seeded mulberry32 per rush-run/daily so replays are fair.
+   ============================================================================ */
 /* ---------- persistence: Claude artifact storage, localStorage fallback for standalone ---------- */
 const store={
   async get(k){
@@ -929,7 +984,7 @@ const store={
     try{localStorage.setItem(k,v);}catch(e){}
   }
 };
-function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,pet:null,petBreed:null,breedsOwned:{},feats:{},trail:null,trailsOwned:{},sidekick:null,sidekicksOwned:{},petAcc:{owned:{},worn:{},colors:{}},petAt:0,shield:false,lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
+function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,cbMode:false,pet:null,petBreed:null,breedsOwned:{},feats:{},trail:null,trailsOwned:{},sidekick:null,sidekicksOwned:{},petAcc:{owned:{},worn:{},colors:{}},petAt:0,shield:false,lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
 let save=freshSave();
 let slots={list:[],active:null,info:{}};
 function migrateSave(src){
@@ -953,6 +1008,7 @@ function migrateSave(src){
   save.feats=save.feats||{};
   save.trailsOwned=save.trailsOwned||{};
   save.sidekicksOwned=save.sidekicksOwned||{};
+  save.cbMode=!!save.cbMode;
 }
 async function loadSlot(id){
   slots.active=id;
@@ -1073,6 +1129,10 @@ const MUSIC={
 };
 function curMusic(){return MUSIC[save.skin]||MUSIC.loom;}
 let themeIdxNow=0;
+/* Looping synth sequencer. Each theme owns one MUSIC pack:
+   mel[32] = scale degrees (-1 = rest); degree d plays scale[d%5] plus an
+   octave per 5. WT[] transposes the whole tune per world so progress is
+   audible. Notes are scheduled ~0.35s ahead of AudioContext time. */
 function musicTick(){
   if(!save.music||!AC)return;
   const pk=curMusic();
@@ -1147,6 +1207,9 @@ let state='title'; // title | play | dying | cleared | rush | rushover
 let anims=[],deathInfo=null,deaths=0,combo=0,comboT=0,timeNow=0;
 let preview=null,radarUntil=0,phaseArmed=false,foreArmed=false,cascLeft=0;
 let titanStart=0,titanUntil=0;
+let undoInfo=null;      // snapshot for the 1.5s undo-last-fire window
+let hintFloats=[];      // in-world first-encounter labels
+let pendingConfirm=null;// two-tap confirm for purchases >= 100 stars
 let hearts=1,dailyMode=false,curMod=null;
 let BW=innerWidth,BH=innerHeight,cam={x:0,y:0},camV={x:0,y:0},overviewUntil=0;
 function clampCam(){
@@ -1158,8 +1221,9 @@ function clampCam(){
   if(cam.y!==py)camV.y=0;
 }
 function walletFx(delta){
-  const chip=$('starChip');
+  const chip=$('starChip'),chip2=$('abilStars');
   chip.classList.remove('pulse');void chip.offsetWidth;chip.classList.add('pulse');
+  chip2.classList.remove('pulse');void chip2.offsetWidth;chip2.classList.add('pulse');
   const r=chip.getBoundingClientRect();
   const s=document.createElement('div');
   s.className='wfx';
@@ -1220,6 +1284,7 @@ function refreshAbilBar(){
       bd.textContent=c+'★';
       const armed=(a.key==='phase'&&phaseArmed)||(a.key==='fore'&&foreArmed);
       btn.classList.toggle('off',save.wallet<c&&!armed);
+      bd.classList.toggle('cant',save.wallet<c&&!armed);
       btn.classList.toggle('armed',armed);
     }
   }
@@ -1244,6 +1309,12 @@ function loadLevel(L,fresh){
   cam.x=Math.max(0,(BW-W)/2);cam.y=Math.max(0,(BH-H)/2);
   camV.x=0;camV.y=0;overviewUntil=0;clampCam();
   keysOwned=new Set();starsGot=0;combo=0;
+  hintFloats=[];
+  const iceL=lines.find(l=>l.ice>0),lockL=lines.find(l=>l.lockId);
+  if(iceL&&!save.seen.fIce){save.seen.fIce=1;persist();
+    const h=lineHead(iceL);hintFloats.push({x:h.x,y:h.y-26,txt:'🧊 tap twice — first tap cracks the ice',t:7});}
+  if(lockL&&!save.seen.fLock){save.seen.fLock=1;persist();
+    const h=lineHead(lockL);hintFloats.push({x:h.x,y:h.y-26,txt:'🔒 fire its key cord first',t:7});}
   setShield(save.shield||(shopLvl('guard')>=2)||(shopLvl('guard')>=1&&L%10===0));
   starTotalInLevel=lines.filter(x=>x.star).length;
   anims=[];deathInfo=null;state='play';rush=null;
@@ -1305,11 +1376,13 @@ function loadDaily(fresh){
 }
 function updateHud(){
   if(state==='rush'&&rush){
-    const alive=lines.filter(l=>!l.gone).length;
-    $('worldName').textContent='WAVE '+Math.max(1,rush.wave)+(rush.goal?('/'+rush.goal):'')+' · '+curTheme().name.toUpperCase();
-    $('lvlLabel').textContent='⚡ '+rush.kills+' kills';
+    $('worldName').textContent=curTheme().name.toUpperCase();
+    $('lvlLabel').textContent='WAVE '+Math.max(1,rush.wave)+(rush.goal?('/'+rush.goal):'');
     $('leftLabel').textContent='· 🧟 '+rush.monsters.length;
+    $('killChip').style.display='block';
+    $('killChip').textContent='⚡ '+rush.kills;
   }else{
+    $('killChip').style.display='none';
     const left=lines.filter(l=>!l.gone).length;
     $('leftLabel').textContent='· '+left+' cord'+(left===1?'':'s');
   }
@@ -1344,6 +1417,7 @@ function startRush(goal,next){
   rush={wave:0,queue:[],monsters:[],shots:[],bombs:[],lanes,sides,
     loot:[],scrap:0,towerLv:1,minX:lanes[0].x-6,
     pows:[],powT:18,freezeT:0,magnetT:0,zapT:0,
+    scrapGot:0,powsUsed:0,trophies0:TROPHIES.filter(trophyDone).length,
     monT:0,betweenT:0.6,bombT:8,lives:3,kills:0,score:0,goal:goal||0,next:next||0,
     rng:mulberry32((Date.now()&0xffffffff)>>>0)};
   state='rush';
@@ -1354,6 +1428,8 @@ function startRush(goal,next){
     (goal?('hold '+goal+' waves — '):'')+'defend '+(PETS[save.pet]?petSpec().name:'the line'));
   showCard('rush');
 }
+/* Spawn X is clamped to rush.minX (leftmost lane's coverage) so nothing
+   can hide in the left gutter; bosses get an extra 90px margin. */
 function spawnMonster(type,hpOver){
   const m=MON[type];
   const lo=type==='boss'?Math.max(90,rush.minX+30):rush.minX;
@@ -1391,6 +1467,10 @@ function fireSide(sd){
   burst(30,sd.y,'#ffffff',6,1.4);sfx.whoosh();
   return true;
 }
+/* Monster death: score, gold burst, and loot rolls.
+   Scrap drop odds: boss 3 guaranteed, brute 55%, others 12%.
+   Bosses past wave 5 may also drop a sidekick egg (35%) while any
+   sidekick is still unhatched. */
 function killMon(i){
   const m=rush.monsters[i];rush.monsters.splice(i,1);
   rush.kills++;
@@ -1416,14 +1496,20 @@ function hatchEgg(g){
   petMood('joy',2.5);
   feat('hatch','New Friend — hatched a sidekick');
 }
+/* Rush power-up activation (tap). freeze: 5s at 0.25x speed;
+   magnet: 10s auto-collect; zap: 8s lane arrows at x3 damage. */
 function usePow(p){
+  rush.powsUsed++;
   sfx.abil();buzz([10,25,10]);burst(p.x,p.y,POW[p.kind].col,16,2.6);
   if(p.kind==='freeze'){rush.freezeT=5;bannerMsg('❄ DEEP FREEZE','monsters slowed');}
   else if(p.kind==='magnet'){rush.magnetT=10;bannerMsg('🧲 MAGNET','pickups collect themselves');}
   else{rush.zapT=8;bannerMsg('⚡ CHARGED LANES','lane arrows hit ×3');}
 }
+/* Tapping a scrap cog. Upgrades are automatic: when scrap reaches
+   towerCost() (= 2 + level, so 3,4,5,6 total 18 to max) the side towers
+   level up: +1 damage and -1s reload per level (6s down to 2s at LV5). */
 function collectScrap(g){
-  rush.scrap++;sfx.gold();buzz(8);
+  rush.scrap++;rush.scrapGot++;sfx.gold();buzz(8);
   burst(g.x,g.y,'#ffd166',10,2);
   if(rush.towerLv<TOWER_MAX&&rush.scrap>=towerCost()){
     rush.scrap-=towerCost();rush.towerLv++;
@@ -1450,7 +1536,7 @@ function rushTap(x,y){
   for(let i=rush.loot.length-1;i>=0;i--){const g=rush.loot[i];
     if(Math.hypot(x-g.x,y-g.y)<36){rush.loot.splice(i,1);
       if(g.kind==='egg')hatchEgg(g);else collectScrap(g);return;}}
-  if(x<58){
+  if(x<58){ // left strip = side-tower fire zone
     let best=null,bd=44;
     for(const sd of rush.sides){const d=Math.abs(y-sd.y);if(d<bd){bd=d;best=sd;}}
     if(best){if(!fireSide(best))sfx.rattle();return;}
@@ -1459,6 +1545,11 @@ function rushTap(x,y){
   for(const ln of rush.lanes){const d=Math.abs(x-ln.x);if(d<bd){bd=d;best=ln;}}
   if(best&&!fireLane(best))sfx.rattle();
 }
+/* Arcade-mode simulation step. Order matters:
+   waves/spawns -> monsters march (freeze slows to 0.25x) -> shots collide
+   (each shot damages each monster once via its `hit` Set) -> bombs fall,
+   land at H-172 (just above the H-150 breach line) on a 5s fuse ->
+   scrap/egg loot drifts & expires -> power-up timers -> breach checks. */
 function rushTick(dt){
   if(paused||state!=='rush')return;
   for(const ln of rush.lanes)ln.cd=Math.max(0,ln.cd-dt);
@@ -1641,12 +1732,18 @@ function rushOver(){
   sfx.death();if(!RM)shake=1;flashT=0.5;
   const earned=Math.min(10,Math.floor(rush.score/12));
   if(earned>0){save.wallet+=earned;walletFx(earned);}
+  const nb=rush.kills>0&&rush.kills>save.rushBest;
   if(rush.kills>save.rushBest)save.rushBest=rush.kills;
   persist();
+  const newTr=TROPHIES.filter(trophyDone).length-(rush.trophies0||0);
   const nxt=rush.next;
   setTimeout(()=>{
     $('rushTitle').textContent=nxt?'THE LOOM HELD… BARELY':'OVERRUN';
-    $('rushStats').textContent=rush.kills+' monsters slain · wave '+Math.max(1,rush.wave)+' · +'+earned+'★';
+    $('rushStats').innerHTML=
+      '⚔ '+rush.kills+' slain · 🌊 wave '+Math.max(1,rush.wave)+
+      (nb?' · <b style="color:var(--gold);">NEW BEST!</b>':'')+
+      '<br>⚙ '+rush.scrapGot+' scrap · towers LV '+rush.towerLv+' · ⚡ '+rush.powsUsed+' power-up'+(rush.powsUsed===1?'':'s')+
+      '<br>+'+earned+'★'+(newTr>0?' · 🏆 '+newTr+' new troph'+(newTr>1?'ies':'y'):'');
     $('rushBestLine').textContent='Best: '+save.rushBest+' kills';
     $('btnRushAgain').textContent=nxt?('Continue — Knot '+nxt):'Run it back';
     show('rushov');
@@ -1656,16 +1753,19 @@ function rushOver(){
 /* ---------- input: tap on release, hold for foresight ---------- */
 let pdown=null,holdTimer=null;
 function toWorld(x,y){return {x:(x-view.ox)/view.s,y:(y-view.oy)/view.s};}
+/* Tap-slop: snap to the NEAREST arrowhead within 34px (heads win over
+   bodies), else the nearest cord body within 26px. Fitts-friendly on mobile. */
 function pickLine(x,y){
   const alive=lines.filter(l=>!l.gone);
-  let best=null,bestD=26;
+  let bestH=null,bestHD=34,best=null,bestD=26;
   for(let i=alive.length-1;i>=0;i--){const l=alive[i];
     const h=lineHead(l);
-    if(Math.hypot(x-h.x,y-h.y)<30)return l;
+    const hd=Math.hypot(x-h.x,y-h.y);
+    if(hd<bestHD){bestHD=hd;bestH=l;}
     for(let k=0;k<l.pts.length-1;k++){
       const d=distPtSeg({x,y},l.pts[k],l.pts[k+1]);
       if(d<bestD){bestD=d;best=l;}}}
-  return best;
+  return bestH||best;
 }
 cv.addEventListener('pointerdown',e=>{
   if(state!=='play'&&state!=='rush')return;
@@ -1764,7 +1864,7 @@ function handleTap(l){
   const remaining=lines.filter(q=>!q.gone);
   const st=freeStatus(l,remaining,far,keysOwned);
   if(st.state==='locked'){l.jig=1;sfx.rattle();return;}
-  if(st.state==='free'){fire(l,st.which,false);return;}
+  if(st.state==='free'){beginUndo(l);fire(l,st.which,false);armUndo();return;}
   if(shield){setShield(false);sfx.shieldSave();l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
     bannerMsg('🛡 SHIELD SPENT','that path was blocked');refreshAbilBar();return;}
   if(state==='play'&&hearts>1){
@@ -1776,12 +1876,17 @@ function handleTap(l){
   die(l,st.hit);
 }
 
+/* Fire one cord out of the knot. `which` = end to lead with; `phased`
+   = pass through blockers (Phase ability / Titan Treat). Handles combo
+   accounting, star payout, trail particles (via drawFly) and win check. */
 function fire(l,which,phased){
   l.gone=true;
   if(combo>0&&timeNow-comboT<2)combo++;else combo=1;
   comboT=timeNow;
   sfx.pluck(combo-1);sfx.whoosh();
   if(combo>=3)bannerMsg('COMBO ×'+combo,null,true);
+  if(combo>=2&&combo%5===0){gain(1);bannerMsg('COMBO ×'+combo,'+1★ bonus',true);}
+  if(combo===3&&state==='play')showCard('combo');
   if(combo>=5)feat('combo5','On a Roll — combo ×5');
   if(combo>=10)feat('combo10','Unstoppable — combo ×10');
   if(l.star){starsGot++;gain(1);sfx.star();
@@ -1822,14 +1927,37 @@ function cascStep(){
   }
   cascLeft=0;
 }
+/* Undo-last-fire: manual campaign fires only. We snapshot every mutable
+   thing fire() touches, show ↩ for 1.5s, and restore wholesale on tap.
+   Not offered on the final cord (the level would clear mid-window). */
+function beginUndo(l){
+  if(cascLeft>0){undoInfo=null;return;}
+  if(lines.filter(q=>!q.gone).length<=1){undoInfo=null;return;}
+  undoInfo={l,wallet:save.wallet,starsGot,combo,comboT,shield,
+    keys:new Set(keysOwned),until:timeNow+1.5};
+}
+function armUndo(){if(undoInfo)$('btnUndo').style.display='flex';}
+function tryUndo(){
+  const u=undoInfo;undoInfo=null;$('btnUndo').style.display='none';
+  if(!u||state!=='play')return;
+  const i=anims.findIndex(a=>a.line===u.l);
+  if(i<0)return;
+  anims.splice(i,1);
+  u.l.gone=false;
+  save.wallet=u.wallet;starsGot=u.starsGot;combo=u.combo;comboT=u.comboT;
+  keysOwned=u.keys;if(shield!==u.shield)setShield(u.shield);
+  persist();sfx.crack();bannerMsg('↩ UNDONE','no harm done');
+  updateHud();refreshAbilBar();
+}
 function die(l,hit){
+  const hadCombo=combo>=3;
   state='dying';deaths++;combo=0;cascLeft=0;sfx.death();petMood('shock',1.2);buzz(40);
   if(!RM)shake=1;flashT=0.4;
   deathInfo={l,hit,t:0};
   burst(hit.pt.x,hit.pt.y,'#ff8fa3',22,2.4);
   setTimeout(()=>{
     const blocker=hit.line;
-    $('deadWhy').innerHTML='Your cord hit the <span class="swatch" style="background:'+cordCol(blocker.col)+'"></span> cord. Clear its path first. <br><span style="font-size:12px;">💀 '+deaths+' this knot</span>';
+    $('deadWhy').innerHTML='Your cord hit the <span class="swatch" style="background:'+cordCol(blocker.col)+'"></span> cord. Clear its path first. <br><span style="font-size:12px;">💀 '+deaths+' this knot'+(hadCombo?' · 🔥 combo broken':'')+'</span>';
     show('dead');
   },RM?250:650);
 }
@@ -2027,6 +2155,8 @@ function drawPreview(){
   }
   ctx.setLineDash([]);
 }
+/* Draws a cord mid-flight along its exit path (eased head window),
+   and emits the equipped cord-trail particles from the head point. */
 function drawFly(an,t){
   const l=an.line;
   const col=l.gold?'#ffd759':(an.phased?'#ffffff':cordCol(l.col));
@@ -2156,6 +2286,8 @@ function updatePet(dt){
 }
 function tri2(g,ax,ay,bx,by,cx,cy){g.beginPath();g.moveTo(ax,ay);g.lineTo(bx,by);g.lineTo(cx,cy);g.closePath();g.fill();}
 function buzz(p){if(navigator.vibrate){try{navigator.vibrate(p);}catch(e){}}}
+/* Companion renderer: body/belly colors come from petSpec() (breed-aware),
+   worn accessories from save.petAcc.worn drawn via drawAcc() per zone. */
 function renderPet(g,cx,cy,scale,t){
   if(!save.pet||!PETS[save.pet])return;
   const sp=petSpec();
@@ -2358,6 +2490,8 @@ function drawSpecialAcc(g,key,hy,t){
     g.beginPath();g.moveTo(-12,-19);g.lineTo(12,-19);g.lineTo(10,-12);g.lineTo(-10,-12);g.closePath();g.fill();g.stroke();
     g.fillStyle='#5adcff';tri2(g,0,-20.5,-2,-17,2,-17);}
 }
+/* Tiny hatchling that hops behind the companion (and in the preview).
+   Kept ~10px tall at scale 1 so it reads as a baby next to any pet. */
 function renderSidekick(g,key,x,y,sc,t){
   const bob=Math.abs(Math.sin(t*8))*3;
   g.save();g.translate(x,y);g.scale(sc,sc);
@@ -2390,6 +2524,8 @@ function renderSidekick(g,key,x,y,sc,t){
   }
   g.restore();
 }
+/* Titan Treat animation curve: smoothstep up to 8x over 1s, hold while
+   the stomp-fire timeouts clear the knot, then ease back over 0.5s. */
 function titanScale(){
   if(!titanUntil)return 1;
   if(timeNow<titanUntil){const p=Math.min(1,(timeNow-titanStart)/1.0);return 1+7*p*p*(3-2*p);}
@@ -2450,15 +2586,37 @@ function frame(ts){
         if(st.state==='free'&&l.ice===0)freeSet.add(l);
       }}
     for(const l of lines)if(!l.gone)drawLine(l,timeNow,freeSet&&freeSet.has(l));
+    for(let i=hintFloats.length-1;i>=0;i--){const hf=hintFloats[i];
+      if(!paused)hf.t-=dt;
+      if(hf.t<=0){hintFloats.splice(i,1);continue;}
+      ctx.globalAlpha=Math.min(1,hf.t);
+      ctx.font='700 12px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      const tw=ctx.measureText(hf.txt).width+18;
+      ctx.fillStyle='rgba(10,12,18,0.85)';
+      if(ctx.roundRect){ctx.beginPath();ctx.roundRect(hf.x-tw/2,hf.y-12,tw,24,12);ctx.fill();}
+      else ctx.fillRect(hf.x-tw/2,hf.y-12,tw,24);
+      ctx.fillStyle='#fff';ctx.fillText(hf.txt,hf.x,hf.y+1);
+      ctx.globalAlpha=1;}
     for(let i=anims.length-1;i>=0;i--){const an=anims[i];
       if(!paused)an.t+=dt;
       if(an.t>=an.dur){anims.splice(i,1);checkClear();continue;}
       drawFly(an,timeNow);}
+    if(state==='play'&&combo>=2&&timeNow-comboT>2){const was=combo;combo=0;
+      if(was>=3)bannerMsg('COMBO FADED','fire again within 2s to chain');}
+    if(undoInfo&&(timeNow>undoInfo.until||state!=='play')){undoInfo=null;$('btnUndo').style.display='none';}
     if(state==='rush'&&rush)drawRush(timeNow);
     drawPreview();
     if(state==='dying')drawDeath();
     drawParts(false);
     ctx.restore();
+    if(state==='play'&&combo>=2){
+      const frac=Math.max(0,1-(timeNow-comboT)/2),cw=90;
+      ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.font='800 15px system-ui,sans-serif';
+      ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillText('🔥 ×'+combo,W/2+1,79);
+      ctx.fillStyle=combo>=5?'#ffd166':'#ffffff';ctx.fillText('🔥 ×'+combo,W/2,78);
+      ctx.fillStyle='rgba(255,255,255,0.18)';ctx.fillRect(W/2-cw/2,84,cw,4);
+      ctx.fillStyle=frac>0.35?'#ffd166':'#ff8fa3';ctx.fillRect(W/2-cw/2,84,cw*frac,4);
+    }
     if(state!=='rush')drawMinimap();
     updatePet(dt);drawPet(timeNow);
   }
@@ -2578,6 +2736,14 @@ function buildShop(){
       if(lvl>=it.tiers.length)return;
       const price=it.tiers[lvl].p;
       if(save.wallet<price)return;
+      if(price>=100&&pendingConfirm!==k){
+        pendingConfirm=k;
+        b.textContent='TAP AGAIN · '+price+'★';
+        setTimeout(()=>{if(pendingConfirm===k){pendingConfirm=null;
+          if(scr.shop.classList.contains('show'))buildShop();}},3000);
+        return;
+      }
+      pendingConfirm=null;
       save.wallet-=price;save.shop[k]=lvl+1;persist();
       sfx.buy();burst(W/2,H/2,'#ffd166',20,2);
       buildShop();refreshAbilBar();refreshGridBtn();updateHud();
@@ -2671,7 +2837,7 @@ function buildThemes(){
     if(sk.multi){bgA=THEMES[0].bgA;bgB=THEMES[0].bgB;}
     else{bgA='hsl('+sk.hues[0]+' '+sk.sat+'% '+sk.l1+'%)';
          bgB='hsl('+sk.hues[0]+' '+sk.sat+'% '+sk.l2+'%)';}
-    const tag=save.skin===key?' ✓':(owned?'':' · <span style="color:var(--gold);">🔒 '+sk.price+'★</span>');
+    const tag=save.skin===key?' ✓':(owned?'':' · <span class="pchip">🔒 '+sk.price+'★</span>');
     const div=document.createElement('button');
     div.className='themeItem'+(save.skin===key?' sel':'');
     if(!owned)div.style.opacity='0.85';
@@ -2704,7 +2870,7 @@ function buildThemes(){
   for(const key in TRAILS){const tr=TRAILS[key];
     const owned=!!save.trailsOwned[key];
     const sel=save.trail===key;
-    const tag=sel?' ✓':(owned?'':' · <span style="color:var(--gold);">🔒 '+tr.price+'★</span>');
+    const tag=sel?' ✓':(owned?'':' · <span class="pchip">🔒 '+tr.price+'★</span>');
     const div=document.createElement('button');
     div.className='themeItem'+(sel?' sel':'');
     if(!owned)div.style.opacity='0.85';
@@ -2754,7 +2920,7 @@ function buildCompanion(){
     b.className='wardItem'+(worn?' worn':'')+((!owned&&save.wallet<w.price)?' cant':'');
     b.innerHTML='<div style="font-size:26px;">'+w.icon+'</div>'+
       '<div class="wnm">'+w.name+'</div>'+
-      '<div class="wpr">'+(owned?(worn?'WORN ✓':'WEAR'):w.price+'★')+'</div>';
+      '<div class="wpr">'+(owned?(worn?'✓ WORN':'WEAR'):'<span class="pchip">🔒 '+w.price+'★</span>')+'</div>';
     b.addEventListener('click',()=>{
       ac();
       if(!owned){
@@ -2768,7 +2934,7 @@ function buildCompanion(){
     });
     if(owned&&ACC_PAL[w.key]){
       const row=document.createElement('div');
-      row.style.cssText='display:flex;gap:6px;justify-content:center;margin-top:6px;';
+      row.style.cssText='display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:6px;';
       ACC_PAL[w.key].forEach(c=>{
         const dot=document.createElement('span');
         const sel=accCol(w.key)===c;
@@ -2800,7 +2966,7 @@ function buildCompanion(){
       b.innerHTML='<div style="width:26px;height:26px;border-radius:50%;background:'+br.body+
         ';border:4px solid '+br.belly+';margin:0 auto;box-sizing:border-box;"></div>'+
         '<div class="wnm">'+br.name+'</div>'+
-        '<div class="wpr">'+(owned?(sel?'HERE ✓':'SWITCH'):br.price+'★')+'</div>';
+        '<div class="wpr">'+(owned?(sel?'✓ IN USE':'USE'):'<span class="pchip">🔒 '+br.price+'★</span>')+'</div>';
       b.addEventListener('click',()=>{
         ac();
         if(!owned){
@@ -2851,7 +3017,7 @@ function buildCompanion(){
     b.className='wardItem'+(sel?' worn':'')+(!owned?' cant':'');
     b.innerHTML='<div style="font-size:26px;">'+(owned?sk2.e:'🥚')+'</div>'+
       '<div class="wnm">'+(owned?sk2.name:'???')+'</div>'+
-      '<div class="wpr">'+(owned?(sel?'RIDING ✓':'RIDE'):'egg · rush wave 5+')+'</div>';
+      '<div class="wpr">'+(owned?(sel?'✓ RIDING':'RIDE'):'egg · rush wave 5+')+'</div>';
     b.addEventListener('click',()=>{
       ac();
       if(!owned){bannerMsg('🥚 A MYSTERY EGG','bosses past wave 5 in Rush may drop one');return;}
@@ -2927,13 +3093,20 @@ function openPetPicker(mode){
   for(const key in PETS){const p=PETS[key];
     const b=document.createElement('button');b.className='themeItem';
     b.innerHTML='<div class="ic" style="font-size:34px;">'+p.emoji+'</div><div style="flex:1;">'+
-      '<div class="nm">'+p.name+'</div>'+
+      '<div class="nm">'+p.name+(petPickMode!=='create'&&save.pet===key?' <span class="pchip">✓ CURRENT</span>':'')+'</div>'+
       '<div style="color:var(--dim);font-size:12px;line-height:1.35;">'+p.flavor+'</div></div>'+
       '<span class="dot" style="width:18px;height:18px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:'+p.body+';"></span>';
     b.addEventListener('click',()=>{
-      ac();sfx.buy();
+      ac();
+      if(petPickMode!=='create'&&save.pet===key){
+        sfx.abil();petMood('joy',1.6);
+        slotResetView();show('title');
+        bannerMsg(p.emoji+' '+petSpec().name.toUpperCase()+' RESELECTED','ready to play');
+        return;
+      }
+      sfx.buy();
       if(petPickMode==='create')createSlot(key);
-      else{save.pet=key;persist();}
+      else{save.pet=key;save.petBreed=null;persist();}
       petMood('joy',2.2);
       slotResetView();show('title');
       bannerMsg(p.emoji+' '+p.name.toUpperCase(),'joined your loom');
@@ -2945,7 +3118,48 @@ function openPetPicker(mode){
 }
 $('btnSlotsBack').addEventListener('click',()=>{buildCompanion();show('comp');});
 $('btnPetCancel').addEventListener('click',()=>{buildSlots();show('looms');});
-$('btnPause').addEventListener('click',()=>{paused=true;show('pause');});
+$('btnPause').addEventListener('click',()=>{paused=true;$('btnCb').classList.toggle('off',!save.cbMode);show('pause');});
+$('btnUndo').addEventListener('click',()=>{ac();tryUndo();});
+$('btnCb').addEventListener('click',()=>{ac();save.cbMode=!save.cbMode;persist();
+  $('btnCb').classList.toggle('off',!save.cbMode);
+  bannerMsg(save.cbMode?'CORD COLORS: HIGH-CONTRAST':'CORD COLORS: THEME');});
+$('btnCb').classList.toggle('off',!save.cbMode);
+$('btnGuide').addEventListener('click',()=>{ac();buildGuide();show('guide');});
+$('btnGuideBack').addEventListener('click',()=>{ac();show('pause');});
+/* Field guide (Nielsen #6, recognition over recall): everything you've met,
+   re-readable any time. Undiscovered mechanics stay as teasers. */
+function buildGuide(){
+  const list=$('guideList');list.innerHTML='';
+  const sec=t=>{const h=document.createElement('div');
+    h.style.cssText='color:var(--dim);font-size:11px;letter-spacing:2px;text-align:center;margin:14px 0 6px;';
+    h.textContent='— '+t+' —';list.appendChild(h);};
+  const row=(icon,name,desc,known)=>{
+    const d=document.createElement('div');d.className='themeItem';
+    if(!known)d.style.opacity='0.5';
+    d.innerHTML='<div class="ic">'+(known?icon:'❔')+'</div><div style="flex:1;">'+
+      '<div class="nm">'+(known?name:'???')+'</div>'+
+      '<div style="color:var(--dim);font-size:12px;line-height:1.35;">'+
+      (known?desc:'Keep playing to discover this.')+'</div></div>';
+    list.appendChild(d);};
+  sec('KNOT MECHANICS');
+  for(const k in MECH){if(k.indexOf('ab_')===0)continue;
+    row(MECH[k].icon,MECH[k].name,MECH[k].desc,!!save.seen[k]);}
+  sec('ABILITIES');
+  for(const k in MECH){if(k.indexOf('ab_')!==0)continue;
+    row(MECH[k].icon,MECH[k].name,MECH[k].desc,!!save.seen[k]);}
+  sec('RUSH BESTIARY');
+  row('🟣','Blob','Slow and squishy. One hit.',true);
+  row('🟠','Runner','Fast! One hit — if you can catch it.',true);
+  row('🔵','Brute','Tanky. Three hits, drops scrap often.',true);
+  row('🔴','Boss','Every 5th wave. Huge health, always drops scrap — sometimes eggs.',true);
+  sec('RUSH PICKUPS');
+  row('⚙','Scrap','Tap to collect. Fills the gauge that upgrades your side towers.',true);
+  row('💣','Bomb','Tap to detonate. Lands above your line and waits 5 seconds.',true);
+  row('❄','Deep Freeze','Slows every monster for 5 seconds.',true);
+  row('🧲','Magnet','Pickups collect themselves for 10 seconds.',true);
+  row('⚡','Charged Lanes','Lane arrows hit ×3 for 8 seconds.',true);
+  row('🥚','Mystery Egg','Rare boss drop past wave 5. Hatches a sidekick!',true);
+}
 $('btnResume').addEventListener('click',()=>hideAll());
 $('btnSfx2').addEventListener('click',()=>{save.sfx=!save.sfx;persist();syncSoundBtns();});
 $('btnDeadHome').addEventListener('click',()=>{slotResetView();show('title');});
