@@ -32,6 +32,21 @@
   #abilBar .ibtn{width:41px;height:41px;font-size:17px;border-radius:12px;}
   .wfx{position:fixed;z-index:40;font-weight:800;font-size:15px;pointer-events:none;
     transition:transform .8s ease-out,opacity .8s;opacity:1;}
+  /* Light skins (Paper Loom): a proper light MODE, not just a light board.
+     The UI is variable-driven, so flipping the vars converts every screen,
+     chip and card to dark-ink-on-light; the rules below patch the few
+     hardcoded dark backgrounds. Banners stay as dark pills for contrast. */
+  body.lightskin{
+    --ink:#232633; --dim:#5f6474;
+    --card:rgba(28,32,48,0.06); --edge:rgba(28,32,48,0.2);
+    --gold:#a97d10;}
+  body.lightskin .screen{background:rgba(242,239,232,0.9);}
+  body.lightskin .lv{background:rgba(28,32,48,0.07);border-color:rgba(28,32,48,0.18);}
+  body.lightskin #petCv,body.lightskin #sanctCv{background:rgba(28,32,48,0.06)!important;}
+  body.lightskin .buyBtn:disabled{background:#cfcabd;color:#8a8577;}
+  body.lightskin #banner{background:rgba(24,27,38,0.9);border-color:rgba(24,27,38,1);color:#f2efe8;}
+  body.lightskin .ibtn:focus-visible{outline-color:#232633;}
+  body.lightskin .wfx{text-shadow:0 1px 4px rgba(255,255,255,0.9);}
   .chip.pulse{animation:chipPulse .45s;}
   @keyframes chipPulse{0%{transform:scale(1);}40%{transform:scale(1.22);}100%{transform:scale(1);}}
   .ibtn{width:46px;height:46px;border-radius:14px;border:1px solid var(--edge);
@@ -782,6 +797,10 @@ const SHOP=[
 const SKINS={
  loom:{name:'Night Loom',icon:'🧶',desc:'The original — every world hand-woven in its own palette',multi:true,price:0,
    grid:'rgba(255,255,255,0.05)',dot:'rgba(255,255,255,0.09)',deco:'dust',bpm:104,wave:'triangle',mvol:0.055},
+ paper:{name:'Paper Loom',icon:'🕊',desc:'Bright linen and daylight — ink-dark cords, easy on the eyes',price:0,light:true,
+   cords:['#c8384f','#1d7a63','#31589e','#c77400','#7d3ba3'],
+   hues:[42,45,48,40,50,44,46,38,52,43],sat:30,l1:90,l2:82,
+   grid:'rgba(40,44,58,0.10)',dot:'rgba(40,44,58,0.18)',deco:'none',bpm:104,wave:'triangle',mvol:0.05},
  medieval:{name:'Medieval',icon:'🏰',desc:'Torchlit keeps, rope and iron, drifting embers',price:75,
    cords:['#e8b04b','#c9503d','#8fae5a','#9a7fd1','#e3d9bf'],
    hues:[30,15,45,0,60,25,10,40,50,20],sat:38,l1:15,l2:6,
@@ -800,6 +819,8 @@ const SKINS={
    grid:'rgba(255,255,255,0.14)',dot:'rgba(255,255,255,0.22)',deco:'none',bpm:104,wave:'triangle',mvol:0.05},
 };
 function curSkin(){return SKINS[save.skin]||SKINS.loom;}
+/* Ink color for canvas UI that must stay readable on light skins. */
+function inkOn(){return curSkin().light?'#232633':'#ffffff';}
 /* Okabe-Ito palette: distinguishable under all common color-vision deficiencies. */
 const CBCORDS=['#0072B2','#E69F00','#009E73','#CC79A7','#F0E442'];
 function cordCol(i){if(save.cbMode)return CBCORDS[i];const sk=curSkin();
@@ -895,7 +916,7 @@ const TROPHIES=[
  {key:'titan',e:'🍖',name:'Colossal Feast',desc:'Feed the Titan Treat',feat:'titan'},
  {key:'ward',e:'👑',name:'Full Wardrobe',desc:'Own every accessory',test:()=>Object.keys(save.petAcc.owned).length>=WARDROBE.length},
  {key:'coats',e:'🐾',name:'Coat Collector',desc:'Buy two extra coats',test:()=>Object.keys(save.breedsOwned).length>=2},
- {key:'hatch',e:'🥚',name:'New Friend',desc:'Hatch a sidekick in Rush',feat:'hatch'},
+ {key:'hatch',e:'🥚',name:'New Friend',desc:'Hatch a sanctuary egg',feat:'hatch'},
  {key:'streak3',e:'📅',name:'Habit Forming',desc:'3-day daily streak',test:()=>save.daily.streak>=3},
 ];
 /* Trophies come in two kinds: `test` fns derive from save (retroactive),
@@ -984,7 +1005,7 @@ const store={
     try{localStorage.setItem(k,v);}catch(e){}
   }
 };
-function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1},gridOn:true,cbMode:false,pet:null,petBreed:null,breedsOwned:{},feats:{},trail:null,trailsOwned:{},sidekick:null,sidekicksOwned:{},petAcc:{owned:{},worn:{},colors:{}},petAt:0,shield:false,lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
+function freshSave(){return {unlocked:1,stars:{},wallet:0,shop:{},rushBest:0,skin:'loom',skinsOwned:{loom:1,paper:1},gridOn:true,cbMode:false,pet:null,petBreed:null,breedsOwned:{},feats:{},eggs:[],trail:null,trailsOwned:{},sidekick:null,sidekicksOwned:{},petAcc:{owned:{},worn:{},colors:{}},petAt:0,shield:false,lastKnot:1,daily:{last:'',streak:0},goal:{date:'',cleared:0,claimed:false},music:true,sfx:true,seen:{},hinted:false,victory:false};}
 let save=freshSave();
 let slots={list:[],active:null,info:{}};
 function migrateSave(src){
@@ -994,6 +1015,7 @@ function migrateSave(src){
   if(s.shop===undefined)save.shop={};
   if(s.skinsOwned===undefined)save.skinsOwned={loom:1};
   if(save.skin&&!save.skinsOwned[save.skin])save.skinsOwned[save.skin]=1;
+  save.skinsOwned.paper=1;
   if(s.petAcc===undefined)save.petAcc={owned:{},worn:{},colors:{}};
   else{
     save.petAcc.owned=save.petAcc.owned||{};
@@ -1008,6 +1030,7 @@ function migrateSave(src){
   save.feats=save.feats||{};
   save.trailsOwned=save.trailsOwned||{};
   save.sidekicksOwned=save.sidekicksOwned||{};
+  save.eggs=save.eggs||[];
   save.cbMode=!!save.cbMode;
 }
 async function loadSlot(id){
@@ -1122,6 +1145,10 @@ const MUSIC={
    bpm:126,wave:'square',mvol:0.04,scale:PENT,
    mel:[4,-1,4,7,-1,7,4,2,0,-1,0,2,4,-1,2,-1,4,-1,4,7,-1,9,7,4,5,4,2,0,2,-1,0,-1],
    bass:[0,5,-3,7]},
+ paper:{name:'Linen Air',
+   bpm:100,wave:'sine',mvol:0.06,scale:PENT,
+   mel:[4,-1,2,-1,0,-1,2,4,5,-1,4,-1,2,-1,-1,-1,4,-1,5,-1,7,-1,5,4,2,-1,4,-1,0,-1,-1,-1],
+   bass:[0,5,-3,0]},
  blueprint:{name:'Draft Hall',
    bpm:96,wave:'triangle',mvol:0.05,scale:PENT,
    mel:[7,-1,-1,4,-1,-1,2,-1,4,-1,-1,2,-1,-1,0,-1,7,-1,-1,9,-1,-1,7,-1,4,-1,2,-1,0,-1,-1,-1],
@@ -1250,6 +1277,7 @@ function applyTheme(idx){themeIdxNow=((idx%10)+10)%10;
     a='hsl('+h+' '+sk.sat+'% '+sk.l1+'%)';b='hsl('+h+' '+sk.sat+'% '+sk.l2+'%)';}
   document.documentElement.style.setProperty('--bgA',a);
   document.documentElement.style.setProperty('--bgB',b);
+  document.body.classList.toggle('lightskin',!!sk.light);
   initStars();}
 
 function arcs(pts){const a=[0];for(let i=1;i<pts.length;i++)a.push(a[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y));return a;}
@@ -1477,24 +1505,41 @@ function killMon(i){
   rush.score+=(m.type==='brute'?3:m.type==='boss'?8:m.type==='runner'?2:1);
   const drops=m.type==='boss'?3:(m.type==='brute'?(rush.rng()<0.55?1:0):(rush.rng()<0.12?1:0));
   for(let d=0;d<drops;d++)rush.loot.push({x:Math.max(rush.minX,Math.min(W-24,m.x+rush.rng()*36-18)),y:m.y+rush.rng()*20-10,t:8,ph:rush.rng()*6.28});
-  if(m.type==='boss'&&rush.wave>=5&&Object.keys(SIDEKICKS).some(k=>!save.sidekicksOwned[k])&&rush.rng()<0.35){
+  if(m.type==='boss'&&rush.wave>=5&&(Object.keys(save.sidekicksOwned).length+save.eggs.length)<Object.keys(SIDEKICKS).length&&rush.rng()<0.35){
     rush.loot.push({kind:'egg',x:Math.max(rush.minX,Math.min(W-24,m.x)),y:m.y,t:10,ph:rush.rng()*6.28});
-    if(!save.seen.eggbanner){save.seen.eggbanner=1;persist();bannerMsg('🥚 SOMETHING PRECIOUS','tap it before it fades');}
+    if(!save.seen.eggbanner){save.seen.eggbanner=1;persist();bannerMsg('🥚 SOMETHING PRECIOUS','rescue it before it fades');}
   }
   burst(m.x,m.y,'#ffd166',14,2.4);sfx.star();updateHud();
 }
 const TOWER_MAX=5;
 function towerCost(){return 2+rush.towerLv;}
-function hatchEgg(g){
+/* Eggs are RESCUED from the tangle, not hatched on the spot — they wait
+   in the sanctuary (companion screen), where warming them (5 taps, cracks
+   appear) hatches a random unhatched sidekick. */
+function rescueEgg(g){
+  save.eggs.push({warm:0});persist();
+  sfx.shieldGet();buzz([12,30,12]);
+  burst(g.x,g.y,'#ffffff',18,2.6);
+  bannerMsg('🥚 RESCUED!','it waits in your sanctuary');
+  petMood('joy',2);
+}
+function warmEgg(i){
+  const e=save.eggs[i];if(!e)return;
+  e.warm=(e.warm||0)+1;persist();
+  sfx.crack();buzz(10);petMood('joy',0.8);
+  if(e.warm>=5)sanctuaryHatch(i);else buildCompanion();
+}
+function sanctuaryHatch(i){
   const un=Object.keys(SIDEKICKS).filter(k=>!save.sidekicksOwned[k]);
-  if(!un.length)return;
+  save.eggs.splice(i,1);
+  if(!un.length){persist();buildCompanion();return;}
   const k=un[Math.floor(Math.random()*un.length)];
   save.sidekicksOwned[k]=1;if(!save.sidekick)save.sidekick=k;
   persist();sfx.fanfare();buzz([15,40,15]);
-  burst(g.x,g.y,'#ffffff',20,3);burst(g.x,g.y,'#ffd166',14,2.4);
-  bannerMsg('🥚 HATCHED!',SIDEKICKS[k].name+' the '+SIDEKICKS[k].kind+' joins you');
-  petMood('joy',2.5);
+  bannerMsg('🐣 '+SIDEKICKS[k].name.toUpperCase()+' HATCHED!','the little '+SIDEKICKS[k].kind+' joins your sanctuary');
+  petMood('joy',2.8);
   feat('hatch','New Friend — hatched a sidekick');
+  buildCompanion();
 }
 /* Rush power-up activation (tap). freeze: 5s at 0.25x speed;
    magnet: 10s auto-collect; zap: 8s lane arrows at x3 damage. */
@@ -1535,7 +1580,7 @@ function rushTap(x,y){
     if(Math.hypot(x-p.x,y-p.y)<36){rush.pows.splice(i,1);usePow(p);return;}}
   for(let i=rush.loot.length-1;i>=0;i--){const g=rush.loot[i];
     if(Math.hypot(x-g.x,y-g.y)<36){rush.loot.splice(i,1);
-      if(g.kind==='egg')hatchEgg(g);else collectScrap(g);return;}}
+      if(g.kind==='egg')rescueEgg(g);else collectScrap(g);return;}}
   if(x<58){ // left strip = side-tower fire zone
     let best=null,bd=44;
     for(const sd of rush.sides){const d=Math.abs(y-sd.y);if(d<bd){bd=d;best=sd;}}
@@ -1595,7 +1640,7 @@ function rushTick(dt){
   if(rush.magnetT>0){
     for(let i=rush.loot.length-1;i>=0;i--){const g=rush.loot[i];
       rush.loot.splice(i,1);
-      if(g.kind==='egg')hatchEgg(g);else collectScrap(g);}}
+      if(g.kind==='egg')rescueEgg(g);else collectScrap(g);}}
   for(let i=rush.monsters.length-1;i>=0;i--){
     const m=rush.monsters[i];
     m.y+=m.spd*(rush.freezeT>0?0.25:1)*dt;
@@ -1661,21 +1706,29 @@ function drawRush(t){
     if(!ready){ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(ln.x,H-166,10,-1.5708,-1.5708+6.283*(1-ln.cd/1.5));ctx.stroke();}
   }
+  /* Tower tiers read at a glance: LV1 plain -> LV2 +ring -> LV3 double
+     chevron -> LV4 gold glow -> LV5 triple chevron. Plus pips. */
   const tlv=rush.towerLv;
   const tcol=tlv>=4?'#ffd166':tlv>=2?'#ffb84d':cordCol(3);
   for(const sd of rush.sides){
     const ready=sd.cd<=0;
     ctx.globalAlpha=ready?1:0.35;
+    if(tlv>=4){ctx.shadowColor='#ffd166';ctx.shadowBlur=10;}
     arrowHead({x:26,y:sd.y},{x:1,y:0},tcol,1,0.9+(tlv-1)*0.14);
+    if(tlv>=3)arrowHead({x:13,y:sd.y},{x:1,y:0},tcol,1,0.55+(tlv-3)*0.08);
+    if(tlv>=5)arrowHead({x:4,y:sd.y},{x:1,y:0},inkOn(),1,0.38);
+    ctx.shadowBlur=0;
+    if(tlv>=2){ctx.strokeStyle=tcol;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(24,sd.y,12+tlv*2,0,6.283);ctx.stroke();}
     ctx.globalAlpha=1;
     for(let p=0;p<tlv;p++){ctx.fillStyle='#ffd166';
-      ctx.beginPath();ctx.arc(10+p*7,sd.y+18+(tlv-1)*2,2.4,0,6.283);ctx.fill();}
-    if(!ready){ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=2;
-      ctx.beginPath();ctx.arc(18,sd.y,10,-1.5708,-1.5708+6.283*(1-sd.cd/(sd.max||6)));ctx.stroke();}
+      ctx.beginPath();ctx.arc(10+p*7,sd.y+22+tlv*2,2.4,0,6.283);ctx.fill();}
+    if(!ready){ctx.strokeStyle=curSkin().light?'rgba(35,38,51,0.85)':'rgba(255,255,255,0.85)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(24,sd.y,8,-1.5708,-1.5708+6.283*(1-sd.cd/(sd.max||6)));ctx.stroke();}
   }
   for(const s of rush.shots){
     const sp=Math.hypot(s.vx,s.vy)||1,nx=s.vx/sp,ny=s.vy/sp;
-    const col=(s.dmg||1)>1?'#ffd166':'#ffffff';
+    const col=(s.dmg||1)>1?'#ffd166':inkOn();
     ctx.strokeStyle=col;ctx.lineWidth=3+Math.min(4,(s.dmg||1));ctx.lineCap='round';
     ctx.beginPath();ctx.moveTo(s.x-nx*18,s.y-ny*18);ctx.lineTo(s.x,s.y);ctx.stroke();
     arrowHead({x:s.x,y:s.y},{x:nx,y:ny},col,1,0.65+Math.min(0.3,((s.dmg||1)-1)*0.08));
@@ -2074,11 +2127,11 @@ function drawMinimap(){
   const mw=64,mh=Math.min(96,Math.round(mw*BH/BW));
   const mx=(W-mw)/2,my=12;
   ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(mx,my,mw,mh);
-  ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.strokeRect(mx,my,mw,mh);
+  ctx.strokeStyle=curSkin().light?'rgba(35,38,51,0.35)':'rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.strokeRect(mx,my,mw,mh);
   for(const l of lines)if(!l.gone){const h=lineHead(l);
     ctx.fillStyle=cordCol(l.col);
     ctx.fillRect(mx+h.x/BW*mw-1,my+h.y/BH*mh-1,2.4,2.4);}
-  ctx.strokeStyle='rgba(255,255,255,0.75)';
+  ctx.strokeStyle=curSkin().light?'rgba(35,38,51,0.8)':'rgba(255,255,255,0.75)';
   const vx=Math.max(0,cam.x)/BW*mw, vy=Math.max(0,cam.y)/BH*mh;
   const vw=Math.min(W,BW)/BW*mw, vh=Math.min(H,BH)/BH*mh;
   ctx.strokeRect(mx+vx,my+vy,vw,vh);
@@ -2553,7 +2606,7 @@ function frame(ts){
         life:3.5,t:0,col:['#ff9a3d','#ffc46b','#ff6b3d'][Math.floor(Math.random()*3)],sz:1.5+Math.random()*2,g:-0.004,scr:true});
     else if(sk.deco==='bubbles'&&Math.random()<0.08)
       parts.push({x:Math.random()*W,y:H+12,vx:(Math.random()-0.5)*0.3,vy:-0.6-Math.random()*0.5,
-        life:4,t:0,col:'rgba(255,255,255,0.35)',sz:3+Math.random()*5,g:0,scr:true});
+        life:4,t:0,col:curSkin().light?'rgba(35,38,51,0.25)':'rgba(255,255,255,0.35)',sz:3+Math.random()*5,g:0,scr:true});
     else if(sk.deco==='stars'&&Math.random()<0.006)
       parts.push({x:Math.random()*W,y:Math.random()*H*0.5,vx:3+Math.random()*3,vy:1.5+Math.random()*1.5,
         life:0.7,t:0,col:'#bfefff',sz:2,g:0,scr:true});
@@ -2612,8 +2665,8 @@ function frame(ts){
     if(state==='play'&&combo>=2){
       const frac=Math.max(0,1-(timeNow-comboT)/2),cw=90;
       ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.font='800 15px system-ui,sans-serif';
-      ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillText('🔥 ×'+combo,W/2+1,79);
-      ctx.fillStyle=combo>=5?'#ffd166':'#ffffff';ctx.fillText('🔥 ×'+combo,W/2,78);
+      ctx.fillStyle=curSkin().light?'rgba(255,255,255,0.6)':'rgba(0,0,0,0.45)';ctx.fillText('🔥 ×'+combo,W/2+1,79);
+      ctx.fillStyle=combo>=5?'#ffd166':inkOn();ctx.fillText('🔥 ×'+combo,W/2,78);
       ctx.fillStyle='rgba(255,255,255,0.18)';ctx.fillRect(W/2-cw/2,84,cw,4);
       ctx.fillStyle=frac>0.35?'#ffd166':'#ff8fa3';ctx.fillRect(W/2-cw/2,84,cw*frac,4);
     }
@@ -2626,6 +2679,26 @@ function frame(ts){
     renderPet(pcx,110,122,2.1,timeNow);
     if(save.sidekick&&SIDEKICKS[save.sidekick])
       renderSidekick(pcx,save.sidekick,58,128,2.1,timeNow);
+    const sc=$('sanctCv');
+    if(sc){const g2=sc.getContext('2d');
+      g2.clearRect(0,0,320,84);
+      g2.fillStyle='rgba(109,207,122,0.16)';g2.fillRect(0,64,320,20);
+      g2.strokeStyle='rgba(109,207,122,0.5)';g2.lineWidth=2;
+      g2.beginPath();g2.moveTo(0,64);g2.lineTo(320,64);g2.stroke();
+      let sx=42;
+      for(const k in SIDEKICKS){if(!save.sidekicksOwned[k])continue;
+        renderSidekick(g2,k,sx+Math.sin(timeNow*0.8+sx)*14,62,1.7,timeNow+sx);sx+=72;}
+      save.eggs.forEach((e,i)=>{
+        const ex=288-i*36,wig=(e.warm||0)>0?Math.sin(timeNow*10)*0.05*(e.warm||0):0;
+        g2.save();g2.translate(ex,54);g2.rotate(wig);
+        g2.fillStyle='#6b5335';g2.beginPath();g2.ellipse(0,10,14,5,0,0,6.283);g2.fill();
+        g2.fillStyle='#f7f2e6';g2.strokeStyle='#d9cfb6';g2.lineWidth=1.5;
+        g2.beginPath();g2.ellipse(0,-1,9,12,0,0,6.283);g2.fill();g2.stroke();
+        g2.strokeStyle='#8a7a55';g2.lineWidth=1;
+        for(let c=0;c<(e.warm||0);c++){g2.beginPath();
+          g2.moveTo(-6+c*3,-8+c*2.6);g2.lineTo(-3+c*3,-5+c*2.6);g2.lineTo(-5+c*3,-2+c*2.6);g2.stroke();}
+        g2.restore();});
+    }
   }
   drawParts(true);
   if(shake>0)ctx.restore();
@@ -2939,7 +3012,7 @@ function buildCompanion(){
         const dot=document.createElement('span');
         const sel=accCol(w.key)===c;
         dot.style.cssText='width:15px;height:15px;border-radius:50%;background:'+c+
-          ';border:2px solid '+(sel?'#ffffff':'rgba(255,255,255,0.22)')+';box-sizing:border-box;';
+          ';border:2px solid '+(sel?(curSkin().light?'#232633':'#ffffff'):'rgba(128,133,150,0.45)')+';box-sizing:border-box;';
         dot.addEventListener('click',ev=>{
           ev.stopPropagation();ac();
           save.petAcc.colors[w.key]=c;persist();
@@ -3007,8 +3080,21 @@ function buildCompanion(){
   }
   const shd=document.createElement('div');
   shd.style.cssText='grid-column:1/-1;color:var(--dim);font-size:11px;letter-spacing:2px;text-align:center;margin-top:6px;';
-  shd.textContent='— SIDEKICKS —';
+  shd.textContent='— 🌿 SANCTUARY — rescued from the tangle —';
   g.appendChild(shd);
+  const scWrap=document.createElement('div');
+  scWrap.style.cssText='grid-column:1/-1;';
+  scWrap.innerHTML='<canvas id="sanctCv" width="320" height="84" style="width:100%;display:block;background:rgba(0,0,0,0.22);border:1px solid var(--edge);border-radius:14px;"></canvas>';
+  g.appendChild(scWrap);
+  save.eggs.forEach((e,i)=>{
+    const b=document.createElement('button');
+    b.className='wardItem';
+    b.innerHTML='<div style="font-size:26px;">🥚</div>'+
+      '<div class="wnm">Rescued egg</div>'+
+      '<div class="wpr">'+'●'.repeat(e.warm||0)+'○'.repeat(Math.max(0,5-(e.warm||0)))+' tap to warm</div>';
+    b.addEventListener('click',()=>{ac();warmEgg(i);});
+    g.appendChild(b);
+  });
   for(const k in SIDEKICKS){
     const sk2=SIDEKICKS[k];
     const owned=!!save.sidekicksOwned[k];
@@ -3017,7 +3103,7 @@ function buildCompanion(){
     b.className='wardItem'+(sel?' worn':'')+(!owned?' cant':'');
     b.innerHTML='<div style="font-size:26px;">'+(owned?sk2.e:'🥚')+'</div>'+
       '<div class="wnm">'+(owned?sk2.name:'???')+'</div>'+
-      '<div class="wpr">'+(owned?(sel?'✓ RIDING':'RIDE'):'egg · rush wave 5+')+'</div>';
+      '<div class="wpr">'+(owned?(sel?'✓ RIDING':'RIDE'):'rescue an egg in Rush')+'</div>';
     b.addEventListener('click',()=>{
       ac();
       if(!owned){bannerMsg('🥚 A MYSTERY EGG','bosses past wave 5 in Rush may drop one');return;}
@@ -3095,7 +3181,7 @@ function openPetPicker(mode){
     b.innerHTML='<div class="ic" style="font-size:34px;">'+p.emoji+'</div><div style="flex:1;">'+
       '<div class="nm">'+p.name+(petPickMode!=='create'&&save.pet===key?' <span class="pchip">✓ CURRENT</span>':'')+'</div>'+
       '<div style="color:var(--dim);font-size:12px;line-height:1.35;">'+p.flavor+'</div></div>'+
-      '<span class="dot" style="width:18px;height:18px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:'+p.body+';"></span>';
+      '<span class="dot" style="width:18px;height:18px;border-radius:50%;border:1px solid rgba(128,133,150,0.6);background:'+p.body+';"></span>';
     b.addEventListener('click',()=>{
       ac();
       if(petPickMode!=='create'&&save.pet===key){
@@ -3158,7 +3244,7 @@ function buildGuide(){
   row('❄','Deep Freeze','Slows every monster for 5 seconds.',true);
   row('🧲','Magnet','Pickups collect themselves for 10 seconds.',true);
   row('⚡','Charged Lanes','Lane arrows hit ×3 for 8 seconds.',true);
-  row('🥚','Mystery Egg','Rare boss drop past wave 5. Hatches a sidekick!',true);
+  row('🥚','Mystery Egg','Rare boss drop past wave 5. Rescue it — it waits in your sanctuary to be warmed and hatched.',true);
 }
 $('btnResume').addEventListener('click',()=>hideAll());
 $('btnSfx2').addEventListener('click',()=>{save.sfx=!save.sfx;persist();syncSoundBtns();});
