@@ -167,6 +167,9 @@
   .buyBtn:active:not(:disabled){transform:scale(.94);}
   .dangerbtn{padding:10px 22px;font-size:13px;border-radius:24px;color:#ffb3b3;
     background:rgba(255,80,110,0.12);border:1px solid rgba(255,120,140,0.4);}
+  /* Pale pink is for dark backgrounds; on paper it needs a deep rose. */
+  body.lightskin .dangerbtn{color:#b8324b;border-color:rgba(184,50,75,0.5);
+    background:rgba(255,80,110,0.1);}
   .dangerbtn:active{transform:scale(.96);}
   .bigbtn.danger{background:linear-gradient(90deg,#ff7a8a,#ff5d6e);
     box-shadow:0 6px 22px rgba(255,90,110,.35);color:#fff;}
@@ -441,6 +444,20 @@ const ENDLESS_MODS=[
  {key:'swarm',name:'SWARM'},
  {key:'hydra',name:'HYDRA'},
 ];
+/* Knots 101-200: ten handcrafted remix worlds, one signature twist each.
+   Past 200 the classic endless cycle takes over. */
+const WORLDS2=[
+ {name:'Phantom Weave', mod:{key:'phantom', name:'PHANTOM VEIL'}},
+ {name:'Chained Deep',  mod:{key:'chains',  name:'DOUBLE LOCKS'}},
+ {name:'Frostbound',    mod:{key:'freeze',  name:'DEEP FREEZE'}},
+ {name:'The Swarm',     mod:{key:'swarm',   name:'SWARM'}},
+ {name:'Hydra Grove',   mod:{key:'hydra',   name:'HYDRA'}},
+ {name:'Gilded Maze',   mod:{key:'gilded',  name:'GILDED MAZE'}},
+ {name:'Colossus',      mod:{key:'titan',   name:'COLOSSUS'}},
+ {name:'Serpent Roads', mod:{key:'serpents',name:'SERPENT ROADS'}},
+ {name:'Tempest',       mod:{key:'tempest', name:'TEMPEST'}},
+ {name:'The Crown',     mod:{key:'crown',   name:'THE CROWN'}},
+];
 
 function levelParams(L){
   const w=Math.ceil(L/10);
@@ -457,18 +474,28 @@ function levelParams(L){
   let twoHead = w>=6 ? Math.min(3,(w>=9?2:1)+Math.floor(e/60)) : 0;
   let locks = w>=5 ? Math.min(3,(w>=8?2:1)+Math.floor(e/40)) : 0;
   let frozen = w>=7 ? Math.min(0.4,(themeIdx===7?0.3:0.2)+e*0.001) : 0;
-  let mod=null;
-  if(L>100){
+  let mod=null,goldN=0,bf2=bf,segMax2=segMax;
+  if(L>100&&L<=200){
+    mod=WORLDS2[w-11].mod;
+  }else if(L>200){
     mod=ENDLESS_MODS[(w*13+5)%ENDLESS_MODS.length];
+  }
+  if(mod){
     if(mod.key==='phantom')ghosts=1;
     else if(mod.key==='chains')locks=Math.min(4,locks+2);
     else if(mod.key==='freeze')frozen=0.55;
     else if(mod.key==='swarm')n=Math.min(16,n+2);
     else if(mod.key==='hydra')twoHead=Math.min(4,twoHead+2);
+    else if(mod.key==='gilded'){goldN=2;/* two bonus cords + max stars */ }
+    else if(mod.key==='titan'){bf2=Math.min(2.6,bf+0.5);n=Math.min(20,n+2);}
+    else if(mod.key==='serpents'){segMax2=Math.min(7,segMax+2);n=Math.max(5,n-3);}
+    else if(mod.key==='tempest'){ghosts=Math.max(ghosts,0.35);twoHead=Math.min(4,twoHead+1);frozen=Math.max(frozen,0.25);}
+    else if(mod.key==='crown'){locks=Math.min(4,locks+1);twoHead=Math.min(4,twoHead+1);ghosts=Math.max(ghosts,0.25);}
   }
   const maxFree = L<=6?99 : L<=12?4 : L<=25?3 : 2;
   const minScore = L>30?2:1;
-  return {w,n,segMax,diag,themeIdx,nStars,shield,ghosts,twoHead,locks,frozen,maxFree,minScore,mod,bf};
+  const nStars2=(mod&&(mod.key==='gilded'||mod.key==='crown'))?3:nStars;
+  return {w,n,segMax:segMax2,diag,themeIdx,nStars:nStars2,shield,ghosts,twoHead,locks,frozen,maxFree,minScore,mod,bf:bf2,goldN};
 }
 
 function rayEndPt(pt,dir,far){return {x:pt.x+dir.x*far,y:pt.y+dir.y*far};}
@@ -646,7 +673,8 @@ function decorate(lines,P,rng,L,far){
   }
   if(P.ghosts>0)lines.forEach(l=>{if(rng()<P.ghosts)l.ghost=true;});
   if(P.frozen>0)lines.forEach(l=>{if(!l.lockId&&rng()<P.frozen)l.ice=2;});
-  if(L%10===0){const g=lines.find(x=>x.ord===n);if(g)g.gold=true;}
+  const gn=Math.max(P.goldN||0,L%10===0?1:0);
+  for(let gi=0;gi<gn;gi++){const g=lines.find(x=>x.ord===n-gi);if(g)g.gold=true;}
 }
 
 function cellFor(W,H){return Math.max(32,Math.min(46,Math.floor(Math.min(W,H)/10)));}
@@ -777,8 +805,7 @@ const MECH={
  ab_titan:{icon:"🍖",name:"Titan Treat in the shop",desc:"A legendary snack awaits in the shop. Feed it to your companion and they grow COLOSSAL — stomping the entire knot clear. Costs a fortune. Worth every star."},
  rush:{icon:"⚡",name:"Rush mode",desc:"Monsters march toward your companion! Tap any column to fire the bottom arrow up that lane; edge arrows sweep sideways. Grab falling 💣 to blast the crowd, and tap ⚙ scrap dropped by slain monsters to upgrade your side towers. Three breaches ends the run."},
  daily:{icon:"📅",name:"Daily Knot",desc:"One special knot per day. Clear it to build a 🔥 streak — the longer the streak, the bigger the ★ reward. Come back tomorrow!"},
- endless:{icon:"♾️",name:"The Endless",desc:"Knots beyond 100 grow without limit — and every world carries a remix modifier: phantom veils, blackouts, swarms, double locks and worse."},
- endless:{icon:"♾️",name:"The Endless",desc:"Knots beyond 100 grow without limit — denser tangles, extra locks, more phantoms and ice. Worlds loop with new fury."},
+ endless:{icon:"♾️",name:"Beyond the Loom",desc:"Ten new worlds await past knot 100 — Phantom Weave, Gilded Maze, Colossus, The Crown and more, each with its own signature twist. Past 200, the truly endless tangle begins."},
 };
 const ABIL=[
  {key:'fore', btn:'abFore', badge:'bgFore', unlockAt:5},
@@ -931,10 +958,15 @@ function trailCol(){
   if(k==='rainbow')return 'hsl('+Math.floor((timeNow*260)%360)+' 90% 62%)';
   return null;
 }
+/* Sidekicks hatch from Rush eggs and now ACT in Rush: each has an ability
+   on a cooldown (cd, seconds). 'ab' is the player-facing description. */
 const SIDEKICKS={
- pip:{name:'Pip',kind:'chick',e:'🐤'},
- tad:{name:'Tad',kind:'frog',e:'🐸'},
- mote:{name:'Mote',kind:'wisp',e:'💫'},
+ pip:{name:'Pip',kind:'chick',e:'🐤',cd:9,ab:'Spark ⚡ zaps the toughest monster every 9s'},
+ tad:{name:'Tad',kind:'frog',e:'🐸',cd:12,ab:'Bog Bounce 🟢 knocks every monster back every 12s'},
+ mote:{name:'Mote',kind:'wisp',e:'💫',cd:13,ab:'Glimmer ✨ pulls in all pickups every 13s'},
+ cinder:{name:'Cinder',kind:'salamander',e:'🦎',cd:8,ab:'Ember 🔥 scorches a random monster every 8s'},
+ floe:{name:'Floe',kind:'penguin',e:'🐧',cd:14,ab:'Flurry ❄ deep-freezes the field every 14s'},
+ zephyr:{name:'Zephyr',kind:'butterfly',e:'🦋',cd:12,ab:'Tailwind 🌬 reloads every lane arrow every 12s'},
 };
 const TROPHIES=[
  {key:'first',e:'🌱',name:'First Knot',desc:'Clear knot 1',test:()=>save.unlocked>1},
@@ -951,6 +983,8 @@ const TROPHIES=[
  {key:'ward',e:'👑',name:'Full Wardrobe',desc:'Own every accessory',test:()=>Object.keys(save.petAcc.owned).length>=WARDROBE.length},
  {key:'coats',e:'🐾',name:'Coat Collector',desc:'Buy two extra coats',test:()=>Object.keys(save.breedsOwned).length>=2},
  {key:'hatch',e:'🥚',name:'New Friend',desc:'Hatch a sanctuary egg',feat:'hatch'},
+ {key:'flock',e:'🐣',name:'Full Flock',desc:'Hatch every sidekick',test:()=>Object.keys(save.sidekicksOwned).length>=Object.keys(SIDEKICKS).length},
+ {key:'w200',e:'🌌',name:'Beyond the Loom',desc:'Clear all 200 knots',test:()=>save.unlocked>200},
  {key:'streak3',e:'📅',name:'Habit Forming',desc:'3-day daily streak',test:()=>save.daily.streak>=3},
 ];
 /* Trophies come in two kinds: `test` fns derive from save (retroactive),
@@ -1274,6 +1308,10 @@ function drawParts(scr){
 let curLevel=0,lines=[],far=0,cell=40,keysOwned=new Set(),shield=false,starsGot=0,starTotalInLevel=0;
 let state='title'; // title | play | dying | cleared | rush | rushover
 let anims=[],deathInfo=null,deaths=0,combo=0,comboT=0,timeNow=0;
+/* comboHold: the chain survives level transitions — the 2s clock is parked
+   until the first fire of the next knot re-arms it. Set on load, cleared on
+   fire, and it breaks like always on a snag or 2s idle mid-knot. */
+let comboHold=false;
 let preview=null,radarUntil=0,phaseArmed=false,foreArmed=false,cascLeft=0;
 let titanStart=0,titanUntil=0;
 let hintFloats=[];      // in-world first-encounter labels
@@ -1309,7 +1347,9 @@ function setShield(v){shield=v;save.shield=v;persist();updateHud();}
 let rush=null; // {cleared,wave,spawnT,interval,starsRun,snags,idc,rng}
 
 function curTheme(){return THEMES[themeIdxNow%10];}
-function worldLabel(L){const w=Math.ceil(L/10);const cyc=Math.floor((w-1)/10)+1;
+function worldLabel(L){const w=Math.ceil(L/10);
+  if(w>=11&&w<=20)return WORLDS2[w-11].name;
+  const cyc=Math.floor((w-1)/10)+1;
   const nm=THEMES[(w-1)%10].name;return cyc>1?nm+' · '+cyc:nm;}
 function applyTheme(idx){themeIdxNow=((idx%10)+10)%10;
   const sk=curSkin();let a,b;
@@ -1377,7 +1417,7 @@ function loadLevel(L,fresh){
   BW=g.BW;BH=g.BH;
   cam.x=Math.max(0,(BW-W)/2);cam.y=Math.max(0,(BH-H)/2);
   camV.x=0;camV.y=0;overviewUntil=0;clampCam();
-  keysOwned=new Set();starsGot=0;combo=0;
+  keysOwned=new Set();starsGot=0;comboHold=combo>=2;
   hintFloats=[];
   const iceL=lines.find(l=>l.ice>0),lockL=lines.find(l=>l.lockId);
   if(iceL&&!save.seen.fIce){save.seen.fIce=1;persist();
@@ -1424,7 +1464,7 @@ function loadDaily(fresh){
   BW=g.BW;BH=g.BH;
   cam.x=Math.max(0,(BW-W)/2);cam.y=Math.max(0,(BH-H)/2);
   camV.x=0;camV.y=0;overviewUntil=0;clampCam();
-  keysOwned=new Set();starsGot=0;combo=0;
+  keysOwned=new Set();starsGot=0;comboHold=combo>=2;
   setShield(save.shield||shopLvl('guard')>=2);
   starTotalInLevel=lines.filter(x=>x.star).length;
   anims=[];deathInfo=null;state='play';rush=null;
@@ -1476,7 +1516,7 @@ function startRush(goal,next){
   BW=W;BH=H;cam.x=0;cam.y=0;camV.x=0;camV.y=0;overviewUntil=0;
   far=2*Math.hypot(W,H);cell=cellFor(W,H);
   lines=[];anims=[];deathInfo=null;preview=null;radarUntil=0;phaseArmed=false;foreArmed=false;cascLeft=0;
-  keysOwned=new Set();combo=0;starsGot=0;starTotalInLevel=0;
+  keysOwned=new Set();comboHold=combo>=2;starsGot=0;starTotalInLevel=0;
   dailyMode=false;curMod=null;hearts=0;
   setShield(save.shield||shopLvl('guard')>=2);
   const nL=Math.max(6,Math.floor((W-36)/48));
@@ -1667,6 +1707,36 @@ function rushTick(dt){
   rush.freezeT=Math.max(0,rush.freezeT-dt);
   rush.magnetT=Math.max(0,rush.magnetT-dt);
   rush.zapT=Math.max(0,rush.zapT-dt);
+  if(save.sidekick&&SIDEKICKS[save.sidekick]){
+    rush.skCd=(rush.skCd===undefined?4:rush.skCd)-dt;
+    if(rush.skCd<=0){
+      const k=save.sidekick,S=SIDEKICKS[k];let acted=false;
+      if(k==='pip'&&rush.monsters.length){
+        let tg=rush.monsters[0];for(const m of rush.monsters)if(m.hp>tg.hp)tg=m;
+        tg.hp-=2;burst(tg.x,tg.y,'#ffe45d',12,2.2);sfx.crack();
+        if(tg.hp<=0){const j=rush.monsters.indexOf(tg);if(j>=0)killMon(j);}acted=true;
+      }else if(k==='cinder'&&rush.monsters.length){
+        const j=Math.floor(rush.rng()*rush.monsters.length),tg=rush.monsters[j];
+        tg.hp-=2;burst(tg.x,tg.y,'#ff7a45',14,2.4);burst(tg.x,tg.y,'#ffd166',8,1.8);sfx.wave();
+        if(tg.hp<=0)killMon(j);acted=true;
+      }else if(k==='tad'&&rush.monsters.length){
+        for(const m of rush.monsters)m.y=Math.max(-24,m.y-46);
+        burst(pet.x,pet.y-20,'#6dcf7a',16,2.6);sfx.wave();acted=true;
+      }else if(k==='floe'&&rush.monsters.length){
+        rush.freezeT=Math.max(rush.freezeT,1.6);
+        burst(pet.x,pet.y-20,'#7dd8ff',16,2.6);sfx.crack();acted=true;
+      }else if(k==='mote'&&(rush.loot.length||rush.pows.length)){
+        rush.magnetT=Math.max(rush.magnetT,1.5);
+        burst(pet.x,pet.y-24,'#e8f4ff',12,2);sfx.star();acted=true;
+      }else if(k==='zephyr'){
+        let any=false;for(const ln of rush.lanes)if(ln.cd>0.2){ln.cd=0;any=true;}
+        if(any){burst(pet.x,pet.y-24,'#c9f5ff',14,2.4);sfx.whoosh();acted=true;}
+      }
+      if(acted){rush.skCd=S.cd;
+        if(!rush.skSeen){rush.skSeen=1;bannerMsg(S.e+' '+S.name.toUpperCase(),S.ab,true);}}
+      else rush.skCd=1;
+    }
+  }
   if(rush.wave>=3){rush.powT-=dt;
     if(rush.powT<=0){
       const kinds=['freeze','magnet','zap'];
@@ -1975,8 +2045,8 @@ function handleTap(l){
    accounting, star payout, trail particles (via drawFly) and win check. */
 function fire(l,which,phased){
   l.gone=true;
-  if(combo>0&&timeNow-comboT<2)combo++;else combo=1;
-  comboT=timeNow;
+  if(combo>0&&(comboHold||timeNow-comboT<2))combo++;else combo=1;
+  comboT=timeNow;comboHold=false;
   sfx.pluck(combo-1);sfx.whoosh();
   if(combo>=3)bannerMsg('COMBO ×'+combo,null,true);
   if(combo>=2&&combo%5===0){gain(1);bannerMsg('COMBO ×'+combo,'+1★ bonus',true);}
@@ -2023,7 +2093,7 @@ function cascStep(){
 }
 function die(l,hit){
   const hadCombo=combo>=3;
-  state='dying';deaths++;combo=0;cascLeft=0;sfx.death();petMood('shock',1.2);buzz(40);
+  state='dying';deaths++;combo=0;comboHold=false;cascLeft=0;sfx.death();petMood('shock',1.2);buzz(40);
   if(!RM)shake=1;flashT=0.4;
   deathInfo={l,hit,t:0};
   burst(hit.pt.x,hit.pt.y,'#ff8fa3',22,2.4);
@@ -2386,6 +2456,9 @@ function renderPet(g,cx,cy,scale,t){
   const shock=pet.mode==='shock'?Math.sin(t*40)*2:0;
   const sq=1+0.04*Math.sin(t*3);
   g.save();g.translate(cx,cy);g.scale(scale,scale);
+  /* Light-coated pets (Clover!) melt into light-theme backgrounds; a soft
+     ambient shadow on every shape acts as a gentle outline. */
+  if(curSkin().light){g.shadowColor='rgba(52,56,74,0.4)';g.shadowBlur=5;}
   g.fillStyle='rgba(0,0,0,0.25)';
   g.beginPath();g.ellipse(0,2,14,4,0,0,6.283);g.fill();
   g.translate(shock,-hop);
@@ -2603,7 +2676,7 @@ function renderSidekick(g,key,x,y,sc,t){
     g.beginPath();g.arc(3,-9.5,1,0,6.283);g.fill();
     g.strokeStyle='#3f9a52';g.lineWidth=1.2;
     g.beginPath();g.arc(0,-4,2.5,0.4,2.7);g.stroke();
-  }else{
+  }else if(key==='mote'){
     g.shadowColor='#cfe8ff';g.shadowBlur=8;
     g.fillStyle='#e8f4ff';g.beginPath();g.arc(0,-6,4.5,0,6.283);g.fill();
     g.shadowBlur=0;
@@ -2612,6 +2685,51 @@ function renderSidekick(g,key,x,y,sc,t){
     g.beginPath();g.arc(1.5,-6.5,0.8,0,6.283);g.fill();
     const a=t*4;g.fillStyle='#ffffff';
     g.beginPath();g.arc(Math.cos(a)*8,-6+Math.sin(a)*5,1.2,0,6.283);g.fill();
+  }else if(key==='cinder'){
+    g.fillStyle='#ff8a50';
+    g.beginPath();g.ellipse(0,-4,7,4,0,0,6.283);g.fill();
+    g.beginPath();g.arc(5.5,-6,3.4,0,6.283);g.fill();
+    g.strokeStyle='#ff8a50';g.lineWidth=2.6;g.lineCap='round';
+    g.beginPath();g.moveTo(-6,-4);g.quadraticCurveTo(-11,-5,-12,-9);g.stroke();
+    const fl=1+0.3*Math.sin(t*12);
+    g.fillStyle='#ffd166';g.beginPath();g.arc(-12,-10.5,2.2*fl,0,6.283);g.fill();
+    g.fillStyle='#ff7a45';g.beginPath();g.arc(-12,-10.5,1.2*fl,0,6.283);g.fill();
+    g.fillStyle='#1a1a22';g.beginPath();g.arc(6.5,-7,0.9,0,6.283);g.fill();
+    g.fillStyle='#e86a3a';
+    g.beginPath();g.ellipse(-2,-7.5,1.4,1,0,0,6.283);g.fill();
+    g.beginPath();g.ellipse(1.5,-6.8,1.2,0.9,0,0,6.283);g.fill();
+  }else if(key==='floe'){
+    g.fillStyle='#2c3444';
+    g.beginPath();g.ellipse(0,-6,5.5,7,0,0,6.283);g.fill();
+    g.fillStyle='#f2f6fa';
+    g.beginPath();g.ellipse(0,-4.5,3.4,4.6,0,0,6.283);g.fill();
+    g.fillStyle='#ffb347';
+    tri2(g,0,-9,-1.6,-7.6,1.6,-7.6);
+    g.fillStyle='#fff';
+    g.beginPath();g.arc(-2,-10.5,1.3,0,6.283);g.fill();
+    g.beginPath();g.arc(2,-10.5,1.3,0,6.283);g.fill();
+    g.fillStyle='#1a1a22';
+    g.beginPath();g.arc(-2,-10.3,0.7,0,6.283);g.fill();
+    g.beginPath();g.arc(2,-10.3,0.7,0,6.283);g.fill();
+    g.fillStyle='#ffb347';
+    g.beginPath();g.ellipse(-2.4,0.6,1.8,0.9,0,0,6.283);g.fill();
+    g.beginPath();g.ellipse(2.4,0.6,1.8,0.9,0,0,6.283);g.fill();
+  }else if(key==='zephyr'){
+    const fl=Math.sin(t*11);
+    g.strokeStyle='#4a4458';g.lineWidth=1.6;g.lineCap='round';
+    g.beginPath();g.moveTo(0,-2);g.lineTo(0,-10);g.stroke();
+    g.beginPath();g.moveTo(0,-10);g.lineTo(-1.6,-12.4);g.moveTo(0,-10);g.lineTo(1.6,-12.4);g.stroke();
+    g.save();g.scale(0.55+0.45*Math.abs(fl),1);
+    g.fillStyle='#9db4ff';
+    g.beginPath();g.ellipse(-4.6,-8,4.4,3.2,-0.5,0,6.283);g.fill();
+    g.beginPath();g.ellipse(4.6,-8,4.4,3.2,0.5,0,6.283);g.fill();
+    g.fillStyle='#ff9ecf';
+    g.beginPath();g.ellipse(-4,-3.6,3.4,2.6,0.5,0,6.283);g.fill();
+    g.beginPath();g.ellipse(4,-3.6,3.4,2.6,-0.5,0,6.283);g.fill();
+    g.restore();
+    g.fillStyle='#4a4458';g.beginPath();g.ellipse(0,-6,1.5,4.5,0,0,6.283);g.fill();
+  }else{
+    g.fillStyle='#cfd6e4';g.beginPath();g.arc(0,-6,5,0,6.283);g.fill();
   }
   g.restore();
 }
@@ -2693,7 +2811,7 @@ function frame(ts){
       if(an.t>=an.dur){anims.splice(i,1);checkClear();continue;}
       drawFly(an,timeNow);}
     if(paused&&combo>=2)comboT+=dt; // freeze the combo window while menus are open
-    if(state==='play'&&!paused&&combo>=2&&timeNow-comboT>2){const was=combo;combo=0;
+    if(state==='play'&&!paused&&!comboHold&&combo>=2&&timeNow-comboT>2){const was=combo;combo=0;
       if(was>=3)bannerMsg('COMBO FADED','fire again within 2s to chain');}
     if(state==='rush'&&rush)drawRush(timeNow);
     drawPreview();
@@ -2701,7 +2819,7 @@ function frame(ts){
     drawParts(false);
     ctx.restore();
     if(state==='play'&&combo>=2){
-      const frac=Math.max(0,1-(timeNow-comboT)/2),cw=90;
+      const frac=comboHold?1:Math.max(0,1-(timeNow-comboT)/2),cw=90;
       ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.font='800 15px system-ui,sans-serif';
       ctx.fillStyle=curSkin().light?'rgba(255,255,255,0.6)':'rgba(0,0,0,0.45)';ctx.fillText('🔥 ×'+combo,W/2+1,79);
       ctx.fillStyle=combo>=5?'#ffd166':inkOn();ctx.fillText('🔥 ×'+combo,W/2,78);
@@ -2866,13 +2984,15 @@ function buildShop(){
 function buildSelect(){
   $('selStars').textContent='★ '+save.wallet;
   const wl=$('worldList');wl.innerHTML='';
-  const maxW=Math.max(10,Math.ceil(save.unlocked/10));
+  /* All 20 dedicated worlds are always visible (locked tiles tease what's
+     ahead); the endless cycle past 200 still reveals progressively. */
+  const maxW=Math.max(20,Math.ceil(save.unlocked/10));
   for(let w=1;w<=maxW;w++){
     const th=THEMES[(w-1)%10];
     const div=document.createElement('div');div.className='world';
     div.style.setProperty('--wA',th.bgA);div.style.setProperty('--wB',th.bgB);
     div.style.setProperty('--wcA',th.cords[0]);div.style.setProperty('--wcB',th.cords[2]);
-    div.innerHTML='<h3>World '+w+' · '+worldLabel((w-1)*10+1)+(w>10?' · ENDLESS':'')+'</h3>';
+    div.innerHTML='<h3>World '+w+' · '+worldLabel((w-1)*10+1)+(w>20?' · ENDLESS':'')+'</h3>';
     const grid=document.createElement('div');grid.className='lvgrid';
     for(let i=1;i<=10;i++){
       const L=(w-1)*10+i;
@@ -3152,7 +3272,8 @@ function buildCompanion(){
     b.className='wardItem'+(sel?' worn':'')+(!owned?' cant':'');
     b.innerHTML='<div style="font-size:26px;">'+(owned?sk2.e:'🥚')+'</div>'+
       '<div class="wnm">'+(owned?sk2.name:'???')+'</div>'+
-      '<div class="wpr">'+(owned?(sel?'✓ RIDING':'RIDE'):'rescue an egg in Rush')+'</div>';
+      '<div class="wpr">'+(owned?(sel?'✓ RIDING':'RIDE'):'rescue an egg in Rush')+'</div>'+
+      (owned?'<div style="font-size:10px;color:var(--dim);margin-top:3px;line-height:1.3;">'+sk2.ab+'</div>':'');
     b.addEventListener('click',()=>{
       ac();
       if(!owned){bannerMsg('🥚 A MYSTERY EGG','bosses past wave 5 in Rush may drop one');return;}
