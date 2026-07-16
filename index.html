@@ -46,19 +46,28 @@
     --gold:#a97d10;}
   body.lightskin .screen{background:rgba(242,239,232,0.9);}
   body.lightskin .lv{background:rgba(28,32,48,0.07);border-color:rgba(28,32,48,0.18);}
-  /* Knot overview in light mode: world cards get a LIGHT wash tinted by
-     their theme colors — keeps per-world identity without a wall of dark
-     cards on the paper background. Plain light fallback for browsers
-     without color-mix. */
-  body.lightskin .world{color:var(--ink);border-color:rgba(28,32,48,0.2);
-    background:rgba(28,32,48,0.06);}
+  /* Knot overview in light mode. The theme BACKGROUND colors are dark and
+     desaturated — mixing those into paper just makes gray. The CORD colors
+     are the vivid ones, so the cards get a cheerful pastel wash from two of
+     them instead. Plain light fallback for browsers without color-mix. */
+  body.lightskin .world{color:var(--ink);border-color:rgba(28,32,48,0.16);
+    background:rgba(28,32,48,0.05);}
   @supports (background: color-mix(in srgb, red 50%, white)){
     body.lightskin .world{background:linear-gradient(135deg,
-      color-mix(in srgb, var(--wA) 22%, #f7f4ec),
-      color-mix(in srgb, var(--wB) 22%, #efece2));}
+      color-mix(in srgb, var(--wcA) 34%, #fffdf7),
+      color-mix(in srgb, var(--wcB) 34%, #fbf7ee));}
   }
-  body.lightskin .world .lv{background:rgba(28,32,48,0.08);border-color:rgba(28,32,48,0.22);}
-  body.lightskin .world .lv.done{border-color:rgba(169,125,16,.65);}
+  body.lightskin .world .lv{background:rgba(255,255,255,0.55);border-color:rgba(28,32,48,0.22);}
+  body.lightskin .world .lv.done{border-color:rgba(224,155,0,.85);background:rgba(255,203,84,0.3);}
+  /* Stars in real gold with an outline so they sparkle on pastel; locked
+     tiles keep a fully visible padlock but recede via a flatter fill. */
+  body.lightskin .lv .st{color:#ffb300;font-size:9px;
+    text-shadow:-1px 0 0 rgba(154,100,0,0.8),1px 0 0 rgba(154,100,0,0.8),
+      0 -1px 0 rgba(154,100,0,0.8),0 1px 0 rgba(154,100,0,0.8);}
+  body.lightskin .lv.locked{opacity:0.85;background:rgba(28,32,48,0.05);border-color:rgba(28,32,48,0.12);}
+  /* The ⚡ kill counter is a yellow system emoji — on a light chip it washes
+     out, so in light mode it gets a dark pill like the banners. */
+  body.lightskin #killChip{background:rgba(24,27,38,0.85);border-color:rgba(24,27,38,1);color:#f2efe8;}
   body.lightskin #petCv,body.lightskin #sanctCv{background:rgba(28,32,48,0.06)!important;}
   body.lightskin .buyBtn:disabled{background:#cfcabd;color:#8a8577;}
   body.lightskin #banner{background:rgba(24,27,38,0.9);border-color:rgba(24,27,38,1);color:#f2efe8;}
@@ -2147,7 +2156,7 @@ function drawMinimap(){
   if(timeNow<overviewUntil)return;
   const mw=64,mh=Math.min(96,Math.round(mw*BH/BW));
   const mx=(W-mw)/2,my=12;
-  ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(mx,my,mw,mh);
+  ctx.fillStyle=curSkin().light?'rgba(255,255,255,0.62)':'rgba(0,0,0,0.4)';ctx.fillRect(mx,my,mw,mh);
   ctx.strokeStyle=curSkin().light?'rgba(35,38,51,0.35)':'rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.strokeRect(mx,my,mw,mh);
   for(const l of lines)if(!l.gone){const h=lineHead(l);
     ctx.fillStyle=cordCol(l.col);
@@ -2862,6 +2871,7 @@ function buildSelect(){
     const th=THEMES[(w-1)%10];
     const div=document.createElement('div');div.className='world';
     div.style.setProperty('--wA',th.bgA);div.style.setProperty('--wB',th.bgB);
+    div.style.setProperty('--wcA',th.cords[0]);div.style.setProperty('--wcB',th.cords[2]);
     div.innerHTML='<h3>World '+w+' · '+worldLabel((w-1)*10+1)+(w>10?' · ENDLESS':'')+'</h3>';
     const grid=document.createElement('div');grid.className='lvgrid';
     for(let i=1;i<=10;i++){
