@@ -14,7 +14,11 @@
   html,body{margin:0;padding:0;height:100%;overflow:hidden;touch-action:none;
     font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;color:var(--ink);
     background:radial-gradient(120% 90% at 50% 0%,var(--bgA),var(--bgB));}
-  canvas{position:fixed;inset:0;display:block;}
+  /* Only the game board is a full-viewport fixed canvas. A bare `canvas`
+     selector here would also rip #petCv and #sanctCv out of flow and pin
+     them over the companion header, blocking taps on the ✕ button. */
+  #cv{position:fixed;inset:0;}
+  canvas{display:block;}
   .hud{position:fixed;top:0;left:0;right:0;z-index:5;pointer-events:none;
     padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 8px;
     display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
@@ -42,9 +46,26 @@
     --gold:#a97d10;}
   body.lightskin .screen{background:rgba(242,239,232,0.9);}
   body.lightskin .lv{background:rgba(28,32,48,0.07);border-color:rgba(28,32,48,0.18);}
+  /* Knot overview in light mode: world cards get a LIGHT wash tinted by
+     their theme colors — keeps per-world identity without a wall of dark
+     cards on the paper background. Plain light fallback for browsers
+     without color-mix. */
+  body.lightskin .world{color:var(--ink);border-color:rgba(28,32,48,0.2);
+    background:rgba(28,32,48,0.06);}
+  @supports (background: color-mix(in srgb, red 50%, white)){
+    body.lightskin .world{background:linear-gradient(135deg,
+      color-mix(in srgb, var(--wA) 22%, #f7f4ec),
+      color-mix(in srgb, var(--wB) 22%, #efece2));}
+  }
+  body.lightskin .world .lv{background:rgba(28,32,48,0.08);border-color:rgba(28,32,48,0.22);}
+  body.lightskin .world .lv.done{border-color:rgba(169,125,16,.65);}
   body.lightskin #petCv,body.lightskin #sanctCv{background:rgba(28,32,48,0.06)!important;}
   body.lightskin .buyBtn:disabled{background:#cfcabd;color:#8a8577;}
   body.lightskin #banner{background:rgba(24,27,38,0.9);border-color:rgba(24,27,38,1);color:#f2efe8;}
+  /* Banners stay dark pills in light mode, so the small subtitle line
+     ("fire again within 2s…", boss knot hints) must not use the light-mode
+     --dim (dark gray on dark pill = unreadable). */
+  body.lightskin #banner small{color:#aab1c2;}
   body.lightskin .ibtn:focus-visible{outline-color:#232633;}
   body.lightskin .wfx{text-shadow:0 1px 4px rgba(255,255,255,0.9);}
   .chip.pulse{animation:chipPulse .45s;}
@@ -89,7 +110,7 @@
   .swatch{display:inline-block;width:14px;height:14px;border-radius:5px;vertical-align:-2px;
     margin:0 4px;border:1px solid rgba(255,255,255,.5);}
   #starsEarned{font-size:26px;letter-spacing:5px;min-height:32px;color:var(--gold);}
-  #banner{position:fixed;top:22%;left:50%;transform:translateX(-50%) scale(.8);z-index:15;
+  #banner{position:fixed;top:22%;left:50%;transform:translateX(-50%) scale(.8);z-index:35;
     padding:12px 28px;border-radius:22px;font-weight:800;font-size:20px;letter-spacing:3px;
     background:rgba(10,12,20,0.5);border:1px solid rgba(255,255,255,0.12);
     opacity:0;pointer-events:none;transition:opacity .35s,transform .35s;text-align:center;max-width:86vw;}
@@ -109,6 +130,7 @@
   .wardItem .wpr{font-size:11px;color:var(--gold);font-weight:800;}
   #petCv{background:rgba(0,0,0,0.25);border:1px solid var(--edge);border-radius:16px;}
   .selHead{display:flex;width:100%;max-width:420px;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;}
+  #compScr{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px);}
   .selHead h2{margin:0;font-size:20px;letter-spacing:3px;}
   #jumpWrap{display:flex;gap:6px;align-items:center;width:100%;max-width:420px;margin-bottom:10px;}
   #jumpIn{flex:1;background:var(--card);border:1px solid var(--edge);border-radius:12px;
@@ -180,7 +202,6 @@
 </div>
 
 <div class="btnrow" id="gameBtns" style="display:none;">
-  <button class="ibtn" id="btnUndo" aria-label="Undo last fire" style="display:none;">↩</button>
   <button class="ibtn" id="btnPause" aria-label="Pause menu">☰</button>
 </div>
 
@@ -305,7 +326,7 @@
     <h2>🐾 COMPANION</h2>
     <div style="display:flex;align-items:center;gap:10px;">
       <span style="color:var(--gold);font-weight:700;" id="compStars">★ 0</span>
-      <button class="ibtn" id="btnCompBack" aria-label="Back">✕</button>
+      <button class="ibtn" id="btnCompClose" aria-label="Close companion page">✕</button>
     </div>
   </div>
   <canvas id="petCv" width="220" height="150"></canvas>
@@ -821,6 +842,10 @@ const SKINS={
 function curSkin(){return SKINS[save.skin]||SKINS.loom;}
 /* Ink color for canvas UI that must stay readable on light skins. */
 function inkOn(){return curSkin().light?'#232633':'#ffffff';}
+/* Gold/amber accents are unreadable on Paper Loom's light background;
+   these darken them to the light-mode --gold family. */
+function goldOn(){return curSkin().light?'#a97d10':'#ffd166';}
+function amberOn(){return curSkin().light?'#9c6410':'#ffb84d';}
 /* Okabe-Ito palette: distinguishable under all common color-vision deficiencies. */
 const CBCORDS=['#0072B2','#E69F00','#009E73','#CC79A7','#F0E442'];
 function cordCol(i){if(save.cbMode)return CBCORDS[i];const sk=curSkin();
@@ -1106,8 +1131,16 @@ const cascChain=()=>[3,5,8][shopLvl('casc')];
 
 /* ---------- audio ---------- */
 let AC=null,musTimer=null,mStep=0,mNext=0;
-function ac(){if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();}
-  if(AC.state==='suspended')AC.resume();return AC;}
+/* Resume/create the AudioContext. MUST NEVER THROW: it's the first call in
+   most button handlers, and mobile WebViews can fail the constructor (context
+   limits, backgrounded tabs). On failure we degrade to silence — every sfx
+   already guards on !AC. */
+function ac(){
+  try{
+    if(!AC)AC=new (window.AudioContext||window.webkitAudioContext)();
+    if(AC&&AC.state==='suspended')AC.resume();
+  }catch(e){AC=null;}
+  return AC;}
 const mf=m=>440*Math.pow(2,(m-69)/12);
 function tone(m,t0,dur,type,vol,glide){
   if(!AC)return;const o=AC.createOscillator(),g=AC.createGain();
@@ -1234,7 +1267,6 @@ let state='title'; // title | play | dying | cleared | rush | rushover
 let anims=[],deathInfo=null,deaths=0,combo=0,comboT=0,timeNow=0;
 let preview=null,radarUntil=0,phaseArmed=false,foreArmed=false,cascLeft=0;
 let titanStart=0,titanUntil=0;
-let undoInfo=null;      // snapshot for the 1.5s undo-last-fire window
 let hintFloats=[];      // in-world first-encounter labels
 let pendingConfirm=null;// two-tap confirm for purchases >= 100 stars
 let hearts=1,dailyMode=false,curMod=null;
@@ -1701,7 +1733,7 @@ function drawRush(t){
   for(const ln of rush.lanes){
     const ready=ln.cd<=0;
     ctx.globalAlpha=ready?1:0.35;
-    arrowHead({x:ln.x,y:H-176},{x:0,y:-1},rush.zapT>0?'#ffe45d':cordCol(0),1,rush.zapT>0?1.05:0.9);
+    arrowHead({x:ln.x,y:H-176},{x:0,y:-1},rush.zapT>0?(curSkin().light?'#8a6a00':'#ffe45d'):cordCol(0),1,rush.zapT>0?1.05:0.9);
     ctx.globalAlpha=1;
     if(!ready){ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(ln.x,H-166,10,-1.5708,-1.5708+6.283*(1-ln.cd/1.5));ctx.stroke();}
@@ -1709,7 +1741,7 @@ function drawRush(t){
   /* Tower tiers read at a glance: LV1 plain -> LV2 +ring -> LV3 double
      chevron -> LV4 gold glow -> LV5 triple chevron. Plus pips. */
   const tlv=rush.towerLv;
-  const tcol=tlv>=4?'#ffd166':tlv>=2?'#ffb84d':cordCol(3);
+  const tcol=tlv>=4?goldOn():tlv>=2?amberOn():cordCol(3);
   for(const sd of rush.sides){
     const ready=sd.cd<=0;
     ctx.globalAlpha=ready?1:0.35;
@@ -1721,14 +1753,14 @@ function drawRush(t){
     if(tlv>=2){ctx.strokeStyle=tcol;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.arc(24,sd.y,12+tlv*2,0,6.283);ctx.stroke();}
     ctx.globalAlpha=1;
-    for(let p=0;p<tlv;p++){ctx.fillStyle='#ffd166';
+    for(let p=0;p<tlv;p++){ctx.fillStyle=goldOn();
       ctx.beginPath();ctx.arc(10+p*7,sd.y+22+tlv*2,2.4,0,6.283);ctx.fill();}
     if(!ready){ctx.strokeStyle=curSkin().light?'rgba(35,38,51,0.85)':'rgba(255,255,255,0.85)';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(24,sd.y,8,-1.5708,-1.5708+6.283*(1-sd.cd/(sd.max||6)));ctx.stroke();}
   }
   for(const s of rush.shots){
     const sp=Math.hypot(s.vx,s.vy)||1,nx=s.vx/sp,ny=s.vy/sp;
-    const col=(s.dmg||1)>1?'#ffd166':inkOn();
+    const col=(s.dmg||1)>1?goldOn():inkOn();
     ctx.strokeStyle=col;ctx.lineWidth=3+Math.min(4,(s.dmg||1));ctx.lineCap='round';
     ctx.beginPath();ctx.moveTo(s.x-nx*18,s.y-ny*18);ctx.lineTo(s.x,s.y);ctx.stroke();
     arrowHead({x:s.x,y:s.y},{x:nx,y:ny},col,1,0.65+Math.min(0.3,((s.dmg||1)-1)*0.08));
@@ -1770,13 +1802,13 @@ function drawRush(t){
   }
   drawMonsters(t);
   ctx.textAlign='left';ctx.font='700 12px system-ui,sans-serif';
-  ctx.fillStyle='rgba(0,0,0,0.4)';
+  ctx.fillStyle=curSkin().light?'rgba(255,255,255,0.6)':'rgba(0,0,0,0.4)';
   let wtxt=rush.towerLv>=TOWER_MAX?'⚙ TOWERS MAX':('⚙ '+rush.scrap+'/'+towerCost()+' · LV '+rush.towerLv);
   if(rush.freezeT>0)wtxt+=' · ❄'+Math.ceil(rush.freezeT);
   if(rush.magnetT>0)wtxt+=' · 🧲'+Math.ceil(rush.magnetT);
   if(rush.zapT>0)wtxt+=' · ⚡'+Math.ceil(rush.zapT);
   ctx.fillText(wtxt,11,H*0.70+1);
-  ctx.fillStyle='#ffd166';
+  ctx.fillStyle=goldOn();
   ctx.fillText(wtxt,10,H*0.70);
 }
 function rushOver(){
@@ -1917,7 +1949,7 @@ function handleTap(l){
   const remaining=lines.filter(q=>!q.gone);
   const st=freeStatus(l,remaining,far,keysOwned);
   if(st.state==='locked'){l.jig=1;sfx.rattle();return;}
-  if(st.state==='free'){beginUndo(l);fire(l,st.which,false);armUndo();return;}
+  if(st.state==='free'){fire(l,st.which,false);return;}
   if(shield){setShield(false);sfx.shieldSave();l.bounce={t:0,dist:Math.min(60,st.hit.dist*0.7)};
     bannerMsg('🛡 SHIELD SPENT','that path was blocked');refreshAbilBar();return;}
   if(state==='play'&&hearts>1){
@@ -1961,7 +1993,7 @@ function fire(l,which,phased){
   const dir={x:(b.x-a.x)/m,y:(b.y-a.y)/m};
   const ext=pts.concat([rayEndPt(b,dir,far)]);
   if(save.pet&&pet.y>0&&distPtSeg({x:pet.x+cam.x,y:pet.y-14+cam.y},b,ext[ext.length-1])<46){
-    const pc=cordCol(l.col);
+    const pc=l.gold?'#ffd759':cordCol(l.col); // effect must match the DISPLAYED color
     setTimeout(()=>{if(!save.pet)return;petHit(elementOf(pc),pc);},240);
   }
   const A=arcs(ext),L=arcs(pts)[pts.length-1],total=A[A.length-1];
@@ -1980,28 +2012,6 @@ function cascStep(){
   }
   cascLeft=0;
 }
-/* Undo-last-fire: manual campaign fires only. We snapshot every mutable
-   thing fire() touches, show ↩ for 1.5s, and restore wholesale on tap.
-   Not offered on the final cord (the level would clear mid-window). */
-function beginUndo(l){
-  if(cascLeft>0){undoInfo=null;return;}
-  if(lines.filter(q=>!q.gone).length<=1){undoInfo=null;return;}
-  undoInfo={l,wallet:save.wallet,starsGot,combo,comboT,shield,
-    keys:new Set(keysOwned),until:timeNow+1.5};
-}
-function armUndo(){if(undoInfo)$('btnUndo').style.display='flex';}
-function tryUndo(){
-  const u=undoInfo;undoInfo=null;$('btnUndo').style.display='none';
-  if(!u||state!=='play')return;
-  const i=anims.findIndex(a=>a.line===u.l);
-  if(i<0)return;
-  anims.splice(i,1);
-  u.l.gone=false;
-  save.wallet=u.wallet;starsGot=u.starsGot;combo=u.combo;comboT=u.comboT;
-  keysOwned=u.keys;if(shield!==u.shield)setShield(u.shield);
-  persist();sfx.crack();bannerMsg('↩ UNDONE','no harm done');
-  updateHud();refreshAbilBar();
-}
 function die(l,hit){
   const hadCombo=combo>=3;
   state='dying';deaths++;combo=0;cascLeft=0;sfx.death();petMood('shock',1.2);buzz(40);
@@ -2013,6 +2023,17 @@ function die(l,hit){
     $('deadWhy').innerHTML='Your cord hit the <span class="swatch" style="background:'+cordCol(blocker.col)+'"></span> cord. Clear its path first. <br><span style="font-size:12px;">💀 '+deaths+' this knot'+(hadCombo?' · 🔥 combo broken':'')+'</span>';
     show('dead');
   },RM?250:650);
+}
+/* A result screen must not stomp an open menu: if the player pops the pause
+   menu (or knots page, shop…) in the beat between the last cord landing and
+   the reveal timeout, wait until they close it. If they've moved on entirely
+   (picked another knot, went to title), state leaves 'cleared' and we drop it. */
+function showWhenMenusClosed(fn){
+  (function w(){
+    if(state!=='cleared')return;
+    if(paused){setTimeout(w,250);return;}
+    fn();
+  })();
 }
 function checkClear(){
   if(state!=='play')return;
@@ -2042,7 +2063,7 @@ function checkClear(){
         $('starsEarned').textContent='🔥 '+save.daily.streak;
         $('clearSub').textContent=(already?'Already claimed today — that one was for glory.'
           :('+'+reward+'★ · streak day '+save.daily.streak))+goalMsg;
-        show('clear');
+        showWhenMenusClosed(()=>show('clear'));
       },RM?300:800);
       return;
     }
@@ -2067,12 +2088,12 @@ function checkClear(){
     setTimeout(()=>{
       if(curLevel===100&&!save.victory){save.victory=true;persist();
         $('victoryStars').textContent='★ '+save.wallet+' in the pouch';
-        show('victory');confetti();return;}
+        showWhenMenusClosed(()=>{show('victory');confetti();});return;}
       $('clearTitle').textContent='KNOT UNTANGLED';
       $('btnNext').textContent=pendingAssault?'⚡ Defend the loom':'Next knot';
       $('starsEarned').textContent=(starTotalInLevel?('★'.repeat(earned)+'☆'.repeat(Math.max(0,starTotalInLevel-earned))):'')+(bonus?('  +'+bonus+'★'):'');
       $('clearSub').textContent=(deaths===0?'Flawless — not a single snag.':('Untangled after '+deaths+' snag'+(deaths===1?'':'s')+'.'))+(bonus?(' Bonus +'+bonus+'★.'):'')+goalMsg;
-      show('clear');
+      showWhenMenusClosed(()=>show('clear'));
     },RM?300:800);
   }
 }
@@ -2262,7 +2283,15 @@ function hexHue(c){const n=parseInt(c.slice(1),16),r=n>>16&255,g2=n>>8&255,b=n&2
 function elementOf(col){const h=hexHue(col);
   if(h<32||h>=345)return 'fire';
   if(h<68)return 'zap';
-  if(h<170)return 'slime';
+  if(h<145)return 'slime';
+  if(h<180){
+    /* Green–aqua border zone. Hue alone misfiles here: pastel teals/mints
+       (#7de3b5, #8fffd9…) read as icy, while saturated greens (#009E73 in
+       CB mode) must stay slime. Cyan-ish colors have blue ≈ green; true
+       greens have much less blue — audit of all 10 themes + CB palette
+       shows b/g 0.76 splits every cord correctly. */
+    const n=parseInt(col.slice(1),16),g2=n>>8&255,b=n&255;
+    return b/(g2||1)<0.76?'slime':'ice';}
   if(h<262)return 'ice';
   return 'shock';}
 function cureStatus(byTap){
@@ -2654,9 +2683,9 @@ function frame(ts){
       if(!paused)an.t+=dt;
       if(an.t>=an.dur){anims.splice(i,1);checkClear();continue;}
       drawFly(an,timeNow);}
-    if(state==='play'&&combo>=2&&timeNow-comboT>2){const was=combo;combo=0;
+    if(paused&&combo>=2)comboT+=dt; // freeze the combo window while menus are open
+    if(state==='play'&&!paused&&combo>=2&&timeNow-comboT>2){const was=combo;combo=0;
       if(was>=3)bannerMsg('COMBO FADED','fire again within 2s to chain');}
-    if(undoInfo&&(timeNow>undoInfo.until||state!=='play')){undoInfo=null;$('btnUndo').style.display='none';}
     if(state==='rush'&&rush)drawRush(timeNow);
     drawPreview();
     if(state==='dying')drawDeath();
@@ -2894,7 +2923,17 @@ $('btnRushTitle').addEventListener('click',()=>toTitle());
 $('btnEndless').addEventListener('click',()=>loadLevel(101,true));
 $('btnVictoryMenu').addEventListener('click',()=>toTitle());
 $('btnRestart').addEventListener('click',()=>{
-  if(state==='rush'||state==='rushover')startRush(rush&&rush.goal,rush&&rush.next);
+  if(state==='rush'||state==='rushover'){
+    const b=$('btnRestart');
+    /* Restarting discards the current run — confirm like Main menu does. */
+    if(state==='rush'&&!b.dataset.arm){
+      b.dataset.arm='1';b.textContent='↻ Restart run?';b.style.color='#ff8fa3';
+      setTimeout(()=>{if(b.isConnected&&b.dataset.arm){b.dataset.arm='';b.textContent='↻ Restart';b.style.color='';}},3500);
+      return;
+    }
+    b.dataset.arm='';b.textContent='↻ Restart';b.style.color='';
+    startRush(rush&&rush.goal,rush&&rush.next);
+  }
   else if(curLevel)loadLevel(curLevel,false);});
 $('btnSelect').addEventListener('click',()=>{buildSelect();show('select');});
 $('btnMechOk').addEventListener('click',()=>hideAll());
@@ -3126,8 +3165,9 @@ function buildCompanion(){
 }
 $('petCv').addEventListener('pointerdown',()=>{ac();petMood('joy',1.6);sfx.pet();});
 $('btnCompanion').addEventListener('click',()=>{buildCompanion();show('comp');});
-$('btnCompBack').addEventListener('click',()=>{
-  if(state==='play'||state==='rush')hideAll();else show('title');});
+function closeCompanion(){
+  if(state==='play'||state==='rush')hideAll();else show('title');}
+$('btnCompClose').addEventListener('click',closeCompanion);
 $('btnSwitchComp').addEventListener('click',()=>{buildSlots();show('looms');});
 function buildSlots(){
   const list=$('slotList');list.innerHTML='';
@@ -3142,9 +3182,9 @@ function buildSlots(){
     div.innerHTML='<div class="ic">'+p.emoji+accE+'</div><div class="info">'+
       '<div class="nm">'+p.name+(cur?' <span style="color:var(--gold);font-size:11px;">· CURRENT</span>':'')+'</div>'+
       '<div class="ds">Knot '+(inf.knot||1)+' · ★ '+(inf.wallet||0)+' · '+(inf.ups||0)+' shop item'+((inf.ups||0)===1?'':'s')+(inf.streak?(' · 🔥'+inf.streak):'')+'</div></div>'+
-      '<div style="display:flex;flex-direction:column;gap:6px;">'+
-      (cur?'':'<button class="buyBtn" data-s="'+id+'">PLAY</button>')+
-      '<button class="ghostbtn" data-del="'+id+'" style="padding:7px 10px;font-size:12px;">🗑</button></div>';
+      '<div style="display:flex;flex-direction:column;gap:18px;align-items:flex-end;">'+
+      '<button class="buyBtn" data-s="'+id+'">'+(cur?'▶ KEEP':'PLAY')+'</button>'+
+      '<button class="ghostbtn" data-del="'+id+'" style="padding:5px 9px;font-size:11px;opacity:0.65;" aria-label="Delete this companion">🗑</button></div>';
     list.appendChild(div);
   });
   if(slots.list.length<6){
@@ -3155,7 +3195,8 @@ function buildSlots(){
     list.appendChild(nb);
   }
   list.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',async()=>{
-    await loadSlot(parseInt(b.getAttribute('data-s'),10));
+    const id=parseInt(b.getAttribute('data-s'),10);
+    if(id!==slots.active)await loadSlot(id);
     saveMeta();slotResetView();show('title');
     const p=save.pet&&PETS[save.pet]&&petSpec();
     if(p)bannerMsg(p.emoji+' '+p.name.toUpperCase(),'welcome back');
@@ -3168,8 +3209,11 @@ function buildSlots(){
       if(slots.active==null){openPetPicker('create');return;}
       slotResetView();buildSlots();
     }else{
-      b.dataset.arm='1';b.textContent='sure?';b.style.color='#ff8fa3';
-      setTimeout(()=>{if(b.isConnected){b.dataset.arm='';b.textContent='🗑';b.style.color='';}},2500);
+      b.dataset.arm='1';b.textContent='DELETE?';b.style.color='#ff8fa3';
+      b.style.opacity='1';b.style.borderColor='rgba(255,120,140,0.7)';
+      const nm=(PETS[(slots.info[id]||{}).pet]||{}).name||('Adventure '+id);
+      bannerMsg('⚠ ERASE '+nm.toUpperCase()+'?','tap DELETE? again — knots, ★ and wardrobe are gone forever');
+      setTimeout(()=>{if(b.isConnected){b.dataset.arm='';b.textContent='🗑';b.style.color='';b.style.opacity='0.65';b.style.borderColor='';}},3500);
     }
   }));
 }
@@ -3204,8 +3248,13 @@ function openPetPicker(mode){
 }
 $('btnSlotsBack').addEventListener('click',()=>{buildCompanion();show('comp');});
 $('btnPetCancel').addEventListener('click',()=>{buildSlots();show('looms');});
-$('btnPause').addEventListener('click',()=>{paused=true;$('btnCb').classList.toggle('off',!save.cbMode);show('pause');});
-$('btnUndo').addEventListener('click',()=>{ac();tryUndo();});
+$('btnPause').addEventListener('click',()=>{paused=true;$('btnCb').classList.toggle('off',!save.cbMode);
+  const hb=$('btnHome');hb.dataset.arm='';hb.textContent='⌂ Main menu';hb.style.color='';
+  const rb=$('btnRestart');rb.dataset.arm='';rb.textContent='↻ Restart';rb.style.color='';
+  /* In rush, the knot select is hidden: picking a knot would silently end
+     the run. Main menu (with its confirm) is the single exit path. */
+  $('btnSelect').style.display=state==='rush'?'none':'';
+  show('pause');});
 $('btnCb').addEventListener('click',()=>{ac();save.cbMode=!save.cbMode;persist();
   $('btnCb').classList.toggle('off',!save.cbMode);
   bannerMsg(save.cbMode?'CORD COLORS: HIGH-CONTRAST':'CORD COLORS: THEME');});
@@ -3251,7 +3300,22 @@ $('btnSfx2').addEventListener('click',()=>{save.sfx=!save.sfx;persist();syncSoun
 $('btnDeadHome').addEventListener('click',()=>{slotResetView();show('title');});
 $('btnClearHome').addEventListener('click',()=>{slotResetView();show('title');});
 $('btnHome').addEventListener('click',()=>{
-  if(state==='rush'&&rush&&rush.kills>save.rushBest){save.rushBest=rush.kills;persist();}
+  const b=$('btnHome');
+  /* Mid-rush, leaving ends the run (arcade runs aren't suspendable — the
+     live wave state would enable quit-scumming past breaches). Two-tap
+     confirm, and the ★ earned so far are banked like a normal run end. */
+  if(state==='rush'&&rush){
+    if(!b.dataset.arm){
+      b.dataset.arm='1';b.textContent='⚠ End run? ★ so far are kept';b.style.color='#ff8fa3';
+      setTimeout(()=>{if(b.isConnected&&b.dataset.arm){b.dataset.arm='';b.textContent='⌂ Main menu';b.style.color='';}},3500);
+      return;
+    }
+    b.dataset.arm='';b.textContent='⌂ Main menu';b.style.color='';
+    const earned=Math.min(10,Math.floor(rush.score/12));
+    if(earned>0){save.wallet+=earned;walletFx(earned);}
+    if(rush.kills>save.rushBest)save.rushBest=rush.kills;
+    persist();
+  }
   slotResetView();show('title');
 });
 
@@ -3275,10 +3339,16 @@ $('btnMusic').addEventListener('click',toggleMusic);
 $('btnMusicT').addEventListener('click',toggleMusic);
 $('btnSfxT').addEventListener('click',()=>{save.sfx=!save.sfx;persist();syncSoundBtns();});
 
-let rsT=null;
+let rsT=null,rsW=innerWidth;
 addEventListener('resize',()=>{fit();
+  const dW=Math.abs(innerWidth-rsW);rsW=innerWidth;
   if(state==='play'||state==='dying'||state==='cleared'){clampCam();}
-  else if(state==='rush'){clearTimeout(rsT);rsT=setTimeout(()=>startRush(rush&&rush.goal,rush&&rush.next),250);}});
+  /* Rush lanes depend on W, so a real width change (rotation, split-screen)
+     rebuilds the run. Height-only resizes are ignored: on mobile the URL bar
+     collapsing/expanding during ANY scroll (e.g. reading the field guide)
+     fires resize, and restarting here slammed menus shut and un-paused the
+     game. Never restart while a menu is open (paused). */
+  else if(state==='rush'&&!paused&&dW>2){clearTimeout(rsT);rsT=setTimeout(()=>startRush(rush&&rush.goal,rush&&rush.next),250);}});
 
 function refreshTitle(){
   const bits=[];
