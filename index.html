@@ -29,6 +29,7 @@
   #rightChips{display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
   #starChip{color:var(--gold);font-weight:700;}
   #shieldChip{display:none;color:#9fe8ff;}
+  body.lightskin #shieldChip{color:#0f6b8e;}
   .btnrow{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);right:12px;z-index:6;
     display:flex;gap:8px;}
   #abilBar{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:10px;z-index:6;
@@ -70,7 +71,7 @@
   body.lightskin #killChip{background:rgba(24,27,38,0.85);border-color:rgba(24,27,38,1);color:#f2efe8;}
   body.lightskin #petCv,body.lightskin #sanctCv{background:rgba(28,32,48,0.06)!important;}
   body.lightskin .buyBtn:disabled{background:#cfcabd;color:#8a8577;}
-  body.lightskin #banner{background:rgba(24,27,38,0.9);border-color:rgba(24,27,38,1);color:#f2efe8;}
+  body.lightskin #banner{background:rgba(24,27,38,0.62);border-color:rgba(24,27,38,0.8);color:#ffffff;}
   /* Banners stay dark pills in light mode, so the small subtitle line
      ("fire again within 2s…", boss knot hints) must not use the light-mode
      --dim (dark gray on dark pill = unreadable). */
@@ -121,7 +122,7 @@
   #starsEarned{font-size:26px;letter-spacing:5px;min-height:32px;color:var(--gold);}
   #banner{position:fixed;top:22%;left:50%;transform:translateX(-50%) scale(.8);z-index:35;
     padding:12px 28px;border-radius:22px;font-weight:800;font-size:20px;letter-spacing:3px;
-    background:rgba(10,12,20,0.5);border:1px solid rgba(255,255,255,0.12);
+    background:rgba(10,12,20,0.5);border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(3px);
     opacity:0;pointer-events:none;transition:opacity .35s,transform .35s;text-align:center;max-width:86vw;}
   #banner.lite{font-size:14px;padding:7px 16px;letter-spacing:2px;top:15%;
     background:rgba(10,12,20,0.35);border-color:rgba(255,255,255,0.08);}
@@ -174,6 +175,26 @@
   .draftcard b{display:block;font-size:12px;margin:4px 0 2px;}
   .draftcard .pe{font-size:22px;}
   .draftcard:active{transform:scale(.95);}
+  #draftEgg{display:none;flex-direction:column;align-items:center;gap:2px;color:#ffd166;}
+  #draftEgg b{letter-spacing:2px;font-size:14px;}
+  #draftEgg small{color:#cfd6e4;font-size:11px;}
+  #draftEgg .bigEgg{font-size:128px;line-height:1.05;display:inline-block;animation:eggwob 0.7s ease-in-out infinite;
+    filter:drop-shadow(0 0 26px rgba(255,225,150,0.85));}
+  #draftEgg b{font-size:18px;}
+  @keyframes eggwob{0%,100%{transform:rotate(-9deg) translateY(0);}50%{transform:rotate(9deg) translateY(-4px);}}
+  #bossIntro{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:4px;pointer-events:none;opacity:0;background:rgba(20,0,10,0);}
+  #bossIntro.show{animation:bossin 2.4s ease-out forwards;}
+  #bossIntro .bwarn{font-size:44px;}
+  #bossIntro .bname{font-size:min(11vw,52px);font-weight:900;letter-spacing:5px;color:#fff;
+    text-shadow:0 0 22px currentColor,0 3px 6px rgba(0,0,0,0.55);}
+  #bossIntro .bsub{font-size:16px;letter-spacing:4px;color:#ffd166;font-weight:700;
+    text-shadow:0 1px 4px rgba(0,0,0,0.6);}
+  @keyframes bossin{
+    0%{opacity:0;transform:scale(1.6);background:rgba(60,0,20,0.35);}
+    12%{opacity:1;transform:scale(1);}
+    75%{opacity:1;transform:scale(1);background:rgba(60,0,20,0.12);}
+    100%{opacity:0;transform:scale(0.94);background:rgba(60,0,20,0);}}
   .lv.locked{opacity:.38;font-size:13px;}
   .lv.done{border-color:rgba(255,209,102,.55);}
   .shopItem{width:100%;max-width:420px;margin-bottom:12px;border-radius:18px;padding:14px;
@@ -384,7 +405,10 @@
   <button class="ghostbtn" id="btnSwitchComp" style="margin-top:12px;">↔ Switch companion</button>
 </div>
 
+<div id="bossIntro"><div class="bwarn">⚠</div><div class="bname"></div><div class="bsub"></div></div>
+
 <div id="draft">
+  <div id="draftEgg"><span class="bigEgg">🥚</span><b>EGG RESCUED!</b><small>it waits in your sanctuary</small></div>
   <h4 id="draftTitle">WAVE CLEARED — CHOOSE A BOON</h4>
   <div class="draftrow" id="draftRow"></div>
 </div>
@@ -1574,6 +1598,30 @@ const MON={
  boss:{hp:6,spd:13,r:20,col:'#ff5d7e'},
 };
 let pendingAssault=null;
+/* One unique boss per boss wave through wave 100 (then the gallery cycles).
+   'sway' adds horizontal weave to movement. */
+const BOSSES=[
+ {name:'GNARL',sub:'the Tangled',col:'#b06ae0',hpMul:1.0,spdMul:0.85,r:22,look:'spikes'},          // w5
+ {name:'SKITTER',sub:'the Swift',col:'#ffa04d',hpMul:0.7,spdMul:1.8,r:16,look:'legs'},             // w10
+ {name:'BULWARK',sub:'the Unmoved',col:'#5aa7e6',hpMul:1.7,spdMul:0.5,r:25,look:'armor'},          // w15
+ {name:'MAW',sub:'the Hungry',col:'#ff5d7e',hpMul:1.2,spdMul:1.0,r:21,look:'maw'},                 // w20
+ {name:'WISP',sub:'the Hollow',col:'#cfd8ff',hpMul:0.85,spdMul:1.25,r:19,look:'ghost',sway:2},     // w25
+ {name:'KORAX',sub:'the Crowned',col:'#ffd166',hpMul:1.3,spdMul:0.9,r:22,look:'crown'},            // w30
+ {name:'OCULON',sub:'the Watcher',col:'#5ad1e6',hpMul:1.1,spdMul:1.0,r:21,look:'eye',sway:1.2},    // w35
+ {name:'THORNE',sub:'the Piercer',col:'#ff5d9e',hpMul:1.0,spdMul:1.35,r:19,look:'horns'},          // w40
+ {name:'CONCH',sub:'the Coiled',col:'#ffb75d',hpMul:1.55,spdMul:0.55,r:24,look:'shell'},           // w45
+ {name:'NYX',sub:'the Umbral',col:'#9d5dff',hpMul:1.4,spdMul:0.95,r:24,look:'crystal'},            // w50
+ {name:'FLIT',sub:'the Duskwing',col:'#c9a7eb',hpMul:0.9,spdMul:1.6,r:17,look:'wings',sway:3},     // w55
+ {name:'GORGE',sub:'the Devourer',col:'#6dcf7a',hpMul:1.5,spdMul:0.85,r:24,look:'maw'},            // w60
+ {name:'TWINNET',sub:'the Double',col:'#ff7ac8',hpMul:1.2,spdMul:1.1,r:22,look:'twin'},            // w65
+ {name:'RIME',sub:'the Frostbitten',col:'#7fc8ff',hpMul:1.35,spdMul:0.8,r:23,look:'crystal'},      // w70
+ {name:'EMBERON',sub:'the Ashen',col:'#ff7a45',hpMul:1.25,spdMul:1.2,r:21,look:'spikes'},          // w75
+ {name:'VOLT',sub:'the Charged',col:'#ffe45d',hpMul:0.8,spdMul:1.9,r:16,look:'legs',sway:2.4},     // w80
+ {name:'DREDGE',sub:'the Sunken',col:'#3f7fb8',hpMul:1.6,spdMul:0.7,r:25,look:'tentacles'},        // w85
+ {name:'PALEKING',sub:'the Forgotten',col:'#e8e4d8',hpMul:1.5,spdMul:1.05,r:23,look:'crown'},      // w90
+ {name:'SHRIKE',sub:'the Final Wing',col:'#ff5d7e',hpMul:1.2,spdMul:1.7,r:18,look:'wings',sway:3.4},// w95
+ {name:'OMEGA',sub:'the Last Knot',col:'#ffffff',hpMul:2.2,spdMul:0.9,r:29,look:'omega'},          // w100
+];
 /* Rush boons: after each cleared wave, draft 1 of 3. Stacking levels. */
 const PERKS={
  swift:{e:'🏹',name:'Swift Arrows',desc:'Lane & tower arrows reload 15% faster',max:3},
@@ -1581,7 +1629,6 @@ const PERKS={
  scrapper:{e:'⚙️',name:'Scrapper',desc:'Monsters drop extra scrap more often',max:3},
  tinker:{e:'🔧',name:'Best Friends',desc:'Sidekick ability recharges 25% faster',max:2},
  overcharge:{e:'🔋',name:'Overcharge',desc:'Power-ups last 2s longer per rank',max:2},
- guardian:{e:'💖',name:'Guardian',desc:'+1 life, right now',max:2},
 };
 function startRush(goal,next){hideDraft();
   applyTheme(0);curLevel=0;
@@ -1596,7 +1643,7 @@ function startRush(goal,next){hideDraft();
   for(let i=0;i<nL;i++)lanes.push({x:24+(W-48)*(i+0.5)/nL,cd:0});
   const sides=[H*0.22,H*0.40,H*0.58].map(y=>({y,cd:0}));
   rush={wave:0,queue:[],monsters:[],shots:[],bombs:[],lanes,sides,
-    loot:[],scrap:0,towerLv:1,minX:lanes[0].x-6,perks:{},drafting:false,lastDraft:0,
+    loot:[],scrap:0,towerLv:1,minX:lanes[0].x-6,perks:{},drafting:false,lastDraft:0,eggsGot:0,eggWave:false,
     pows:[],powT:18,freezeT:0,magnetT:0,zapT:0,
     scrapGot:0,powsUsed:0,trophies0:TROPHIES.filter(trophyDone).length,
     monT:0,betweenT:0.6,bombT:8,lives:3,kills:0,score:0,goal:goal||0,next:next||0,
@@ -1614,14 +1661,30 @@ function startRush(goal,next){hideDraft();
 function spawnMonster(type,hpOver){
   const m=MON[type];
   const lo=type==='boss'?Math.max(90,rush.minX+30):rush.minX;
-  rush.monsters.push({type,x:lo+rush.rng()*(W-lo-36),y:-24,
+  const mon={type,x:lo+rush.rng()*(W-lo-36),y:-24,
     hp:hpOver||m.hp,maxhp:hpOver||m.hp,
-    spd:m.spd*(1+rush.wave*0.05),r:m.r,ph:rush.rng()*6.28});
+    spd:m.spd*(1+rush.wave*0.05),r:m.r,ph:rush.rng()*6.28};
+  if(type==='boss'){
+    const B=BOSSES[(Math.max(1,Math.round(rush.wave/5))-1)%BOSSES.length];
+    mon.b=B;mon.r=B.r;mon.spd*=B.spdMul;
+    /* Early bosses were pushovers: real health, scaling with the wave. */
+    mon.hp=mon.maxhp=Math.round((12+rush.wave*1.3)*B.hpMul);
+  }
+  rush.monsters.push(mon);
 }
 function waveStart(){
   rush.wave++;applyTheme(rush.wave-1);sfx.wave();
   if(rush.wave>=10)feat('wave10','Held the Line — wave 10');
-  bannerMsg('WAVE '+rush.wave+(rush.goal?(' / '+rush.goal):''),rush.wave%5===0?'⚠ boss incoming':null);
+  {const bossW=rush.wave%5===0,B=bossW?BOSSES[(Math.round(rush.wave/5)-1)%BOSSES.length]:null;
+  bannerMsg('WAVE '+rush.wave+(rush.goal?(' / '+rush.goal):''),null);
+  if(B)setTimeout(()=>{if(state!=='rush'||paused)return;
+    const bi=$('bossIntro');
+    bi.querySelector('.bname').textContent=B.name;
+    bi.querySelector('.bname').style.color=B.col;
+    bi.querySelector('.bsub').textContent=B.sub.toUpperCase()+' APPROACHES';
+    bi.classList.remove('show');void bi.offsetWidth;bi.classList.add('show');
+    sfx.boom();buzz([20,50,20]);if(!RM)shake=0.7;
+  },1000);}
   const w=rush.wave;rush.queue=[];
   const count=4+Math.floor(w*1.6);
   for(let i=0;i<count;i++){
@@ -1658,7 +1721,7 @@ function killMon(i){
   const m=rush.monsters[i];rush.monsters.splice(i,1);
   rush.kills++;
   rush.score+=(m.type==='brute'?3:m.type==='boss'?8:m.type==='runner'?2:1);
-  const drops=(m.type==='boss'?3:(m.type==='brute'?(rush.rng()<0.55?1:0):(rush.rng()<0.12?1:0)))+(rush.rng()<0.35*(rush.perks.scrapper||0)?1:0);
+  const drops=(m.type==='boss'?2:(m.type==='brute'?(rush.rng()<0.28?1:0):(rush.rng()<0.05?1:0)))+(rush.rng()<0.3*(rush.perks.scrapper||0)?1:0);
   for(let d=0;d<drops;d++)rush.loot.push({x:Math.max(rush.minX,Math.min(W-24,m.x+rush.rng()*36-18)),y:m.y+rush.rng()*20-10,t:8,ph:rush.rng()*6.28});
   if(m.type==='boss'&&rush.wave>=5&&(Object.keys(save.sidekicksOwned).length+save.eggs.length)<Object.keys(SIDEKICKS).length&&rush.rng()<0.35){
     rush.loot.push({kind:'egg',x:Math.max(rush.minX,Math.min(W-24,m.x)),y:m.y,t:10,ph:rush.rng()*6.28});
@@ -1667,12 +1730,13 @@ function killMon(i){
   burst(m.x,m.y,'#ffd166',14,2.4);sfx.star();updateHud();
 }
 const TOWER_MAX=5;
-function towerCost(){return 2+rush.towerLv;}
+function towerCost(){return 3+rush.towerLv*3;} // 6,9,12,15 — maxing is a late-run feat
 /* Eggs are RESCUED from the tangle, not hatched on the spot — they wait
    in the sanctuary (companion screen), where warming them (5 taps, cracks
    appear) hatches a random unhatched sidekick. */
 function rescueEgg(g){
   save.eggs.push({warm:0});persist();
+  if(rush){rush.eggsGot=(rush.eggsGot||0)+1;rush.eggWave=true;}
   sfx.shieldGet();buzz([12,30,12]);
   burst(g.x,g.y,'#ffffff',18,2.6);
   bannerMsg('🥚 RESCUED!','it waits in your sanctuary');
@@ -1752,8 +1816,16 @@ function rushTap(x,y){
    scrap/egg loot drifts & expires -> power-up timers -> breach checks. */
 function hideDraft(){$('draft').classList.remove('show');if(rush)rush.drafting=false;}
 function openDraft(){
+  /* Sweep the floor first: cogs feed the towers, eggs get their moment. */
+  if(rush.loot.length){
+    const pending=rush.loot.slice();rush.loot.length=0;
+    for(const g of pending){if(g.kind==='egg')rescueEgg(g);else collectScrap(g);}
+  }
+  const eggMoment=rush.eggWave;rush.eggWave=false;
+  const eg=$('draftEgg');eg.style.display=eggMoment?'flex':'none';
+  if(eggMoment){confetti();sfx.shieldGet();}
   const pool=Object.keys(PERKS).filter(k=>(rush.perks[k]||0)<PERKS[k].max);
-  if(!pool.length)return;
+  if(!pool.length){if(eggMoment){rush.drafting=true;$('draftTitle').textContent='BOSS DOWN!';$('draftRow').innerHTML='<button class="draftcard" data-perk="">Continue ▶</button>';$('draftRow').querySelector('[data-perk]').addEventListener('click',()=>{hideDraft();});$('draft').classList.add('show');}return;}
   for(let i=pool.length-1;i>0;i--){const j=Math.floor(rush.rng()*(i+1));const t=pool[i];pool[i]=pool[j];pool[j]=t;}
   const picks=pool.slice(0,Math.min(3,pool.length));
   $('draftTitle').textContent='WAVE '+rush.wave+' CLEARED — CHOOSE A BOON';
@@ -1764,7 +1836,6 @@ function openDraft(){
     if(!rush||!rush.drafting)return;
     ac();const k=b.getAttribute('data-perk');
     rush.perks[k]=(rush.perks[k]||0)+1;
-    if(k==='guardian'){rush.lives=Math.min(5,rush.lives+1);updateHud();}
     sfx.gold();hideDraft();
     bannerMsg(PERKS[k].e+' '+PERKS[k].name.toUpperCase(),PERKS[k].desc,true);
   }));
@@ -1788,7 +1859,8 @@ function rushTick(dt){
     }
   }else if(!rush.monsters.length){
     if(rush.goal&&rush.wave>=rush.goal){assaultWin();return;}
-    if(rush.wave>=1&&rush.lastDraft<rush.wave){rush.lastDraft=rush.wave;openDraft();if(rush.drafting)return;}
+    /* Boons are a BOSS reward: draft only after every 5th (boss) wave. */
+    if(rush.wave>=1&&rush.wave%5===0&&rush.lastDraft<rush.wave){rush.lastDraft=rush.wave;openDraft();if(rush.drafting)return;}
     rush.betweenT-=dt;
     if(rush.betweenT<=0){waveStart();rush.betweenT=3;}
   }
@@ -1859,6 +1931,7 @@ function rushTick(dt){
   for(let i=rush.monsters.length-1;i>=0;i--){
     const m=rush.monsters[i];
     m.y+=m.spd*(rush.freezeT>0?0.25:1)*dt;
+    if(m.b&&m.b.sway)m.x=Math.max(rush.minX,Math.min(W-24,m.x+Math.sin(timeNow*m.b.sway+m.ph)*34*dt));
     m.x=Math.max(rush.minX,Math.min(W-16,m.x+Math.sin(timeNow*2+m.ph)*14*dt));
     if(m.y>H-150){
       rush.monsters.splice(i,1);
@@ -1896,14 +1969,112 @@ function drawMonsters(t){
     const wob=1+0.08*Math.sin(t*6+m.ph);
     ctx.fillStyle='rgba(0,0,0,0.3)';
     ctx.beginPath();ctx.ellipse(m.x,m.y+m.r*0.8,m.r*0.8,3,0,0,6.283);ctx.fill();
-    ctx.fillStyle=MON[m.type].col;
-    ctx.beginPath();ctx.ellipse(m.x,m.y,m.r*wob,m.r/wob,0,0,6.283);ctx.fill();
-    ctx.fillStyle='#fff';
-    ctx.beginPath();ctx.arc(m.x-m.r*0.32,m.y-2,m.r*0.22,0,6.283);ctx.fill();
-    ctx.beginPath();ctx.arc(m.x+m.r*0.32,m.y-2,m.r*0.22,0,6.283);ctx.fill();
-    ctx.fillStyle='#1a1a22';
-    ctx.beginPath();ctx.arc(m.x-m.r*0.32,m.y-1,m.r*0.1,0,6.283);ctx.fill();
-    ctx.beginPath();ctx.arc(m.x+m.r*0.32,m.y-1,m.r*0.1,0,6.283);ctx.fill();
+    const B=m.b,lk=B&&B.look;
+    ctx.fillStyle=B?B.col:MON[m.type].col;
+    if(lk==='ghost')ctx.globalAlpha=0.55+0.3*Math.sin(t*3+m.ph);
+    /* --- behind-body decorations --- */
+    if(lk==='spikes'||lk==='omega'){
+      for(let a=0;a<8;a++){const an=a/8*6.283+t*0.6;
+        tri2(ctx,m.x+Math.cos(an)*m.r*0.8,m.y+Math.sin(an)*m.r*0.8,
+          m.x+Math.cos(an+0.25)*m.r*0.8,m.y+Math.sin(an+0.25)*m.r*0.8,
+          m.x+Math.cos(an+0.125)*m.r*1.35,m.y+Math.sin(an+0.125)*m.r*1.35);}
+    }
+    if(lk==='legs'){
+      ctx.strokeStyle=B.col;ctx.lineWidth=3;ctx.lineCap='round';
+      for(let l=0;l<3;l++){const sway=Math.sin(t*14+l*2.1)*5;
+        ctx.beginPath();ctx.moveTo(m.x-m.r*0.6,m.y+l*4-4);ctx.lineTo(m.x-m.r*1.5,m.y+l*6-2+sway);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(m.x+m.r*0.6,m.y+l*4-4);ctx.lineTo(m.x+m.r*1.5,m.y+l*6-2-sway);ctx.stroke();}
+    }
+    if(lk==='wings'){
+      const fl=Math.sin(t*12+m.ph);
+      ctx.save();ctx.globalAlpha*=0.85;
+      ctx.beginPath();ctx.ellipse(m.x-m.r*1.1,m.y-4,m.r*0.9*(0.5+0.5*Math.abs(fl)),m.r*0.55,-0.5,0,6.283);ctx.fill();
+      ctx.beginPath();ctx.ellipse(m.x+m.r*1.1,m.y-4,m.r*0.9*(0.5+0.5*Math.abs(fl)),m.r*0.55,0.5,0,6.283);ctx.fill();
+      ctx.restore();
+    }
+    if(lk==='tentacles'){
+      ctx.strokeStyle=B.col;ctx.lineWidth=4;ctx.lineCap='round';
+      for(let l=0;l<5;l++){const bx=m.x-m.r*0.7+l*m.r*0.35,wg=Math.sin(t*7+l*1.4+m.ph)*6;
+        ctx.beginPath();ctx.moveTo(bx,m.y+m.r*0.5);ctx.quadraticCurveTo(bx+wg,m.y+m.r*1.1,bx-wg,m.y+m.r*1.55);ctx.stroke();}
+    }
+    if(lk==='horns'){
+      ctx.strokeStyle=B.col;ctx.lineWidth=5;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(m.x-m.r*0.5,m.y-m.r*0.6);ctx.quadraticCurveTo(m.x-m.r*1.1,m.y-m.r*1.3,m.x-m.r*0.55,m.y-m.r*1.7);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(m.x+m.r*0.5,m.y-m.r*0.6);ctx.quadraticCurveTo(m.x+m.r*1.1,m.y-m.r*1.3,m.x+m.r*0.55,m.y-m.r*1.7);ctx.stroke();
+    }
+    /* --- body --- */
+    if(lk==='crystal'){
+      ctx.beginPath();
+      for(let a=0;a<6;a++){const an=a/6*6.283+0.5236,px=m.x+Math.cos(an)*m.r*wob,py=m.y+Math.sin(an)*m.r/wob;
+        a?ctx.lineTo(px,py):ctx.moveTo(px,py);}
+      ctx.closePath();ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.55)';ctx.lineWidth=1.6;
+      ctx.beginPath();ctx.moveTo(m.x,m.y-m.r);ctx.lineTo(m.x,m.y+m.r);ctx.moveTo(m.x-m.r*0.85,m.y-m.r*0.5);ctx.lineTo(m.x+m.r*0.85,m.y+m.r*0.5);ctx.stroke();
+    }else{
+      ctx.beginPath();ctx.ellipse(m.x,m.y,m.r*wob,m.r/wob,0,0,6.283);ctx.fill();
+    }
+    /* --- on-body decorations --- */
+    if(lk==='armor'){
+      ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.arc(m.x,m.y,m.r*0.72,0,6.283);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(m.x-m.r*0.7,m.y+m.r*0.25);ctx.lineTo(m.x+m.r*0.7,m.y+m.r*0.25);ctx.stroke();
+      ctx.fillStyle='rgba(0,0,0,0.25)';
+      ctx.fillRect(m.x-m.r*0.62,m.y-m.r*0.55,m.r*1.24,m.r*0.22);
+    }
+    if(lk==='maw'){
+      ctx.fillStyle='#3a0d18';
+      ctx.beginPath();ctx.arc(m.x,m.y+m.r*0.28,m.r*0.55,0,3.1416);ctx.fill();
+      ctx.fillStyle='#fff';
+      for(let th=0;th<4;th++)tri2(ctx,m.x-m.r*0.45+th*m.r*0.3,m.y+m.r*0.28,
+        m.x-m.r*0.3+th*m.r*0.3,m.y+m.r*0.28,m.x-m.r*0.375+th*m.r*0.3,m.y+m.r*0.55);
+    }
+    if(lk==='shell'){
+      ctx.strokeStyle='rgba(90,50,10,0.5)';ctx.lineWidth=3;
+      for(let sp=0;sp<3;sp++){ctx.beginPath();ctx.arc(m.x+m.r*0.1,m.y-m.r*0.05,m.r*(0.25+sp*0.24),sp,sp+4.8);ctx.stroke();}
+    }
+    if(lk==='crown'||lk==='omega'){
+      ctx.fillStyle=lk==='omega'?'#ffd166':'#ffe9a8';
+      const cy=m.y-m.r*1.05;
+      tri2(ctx,m.x-m.r*0.55,cy,m.x-m.r*0.2,cy,m.x-m.r*0.42,cy-m.r*0.45);
+      tri2(ctx,m.x-m.r*0.18,cy,m.x+m.r*0.18,cy,m.x,cy-m.r*0.55);
+      tri2(ctx,m.x+m.r*0.2,cy,m.x+m.r*0.55,cy,m.x+m.r*0.42,cy-m.r*0.45);
+      ctx.fillRect(m.x-m.r*0.55,cy-2,m.r*1.1,4);
+      ctx.fillStyle=B.col;
+    }
+    if(lk==='ghost'){
+      ctx.beginPath();ctx.moveTo(m.x-m.r*0.9,m.y+m.r*0.3);
+      for(let g2=0;g2<4;g2++)ctx.quadraticCurveTo(m.x-m.r*0.9+m.r*0.45*(g2+0.5),m.y+m.r*(g2%2?0.5:1.1),m.x-m.r*0.9+m.r*0.45*(g2+1),m.y+m.r*0.75);
+      ctx.lineTo(m.x+m.r*0.9,m.y);ctx.lineTo(m.x-m.r*0.9,m.y);ctx.closePath();ctx.fill();
+    }
+    /* --- eyes --- */
+    const ey=m.y-2-(B?3:0);
+    if(lk==='eye'){
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(m.x,ey,m.r*0.42,0,6.283);ctx.fill();
+      ctx.fillStyle='#1a1a22';
+      const lookA=Math.sin(t*1.4+m.ph)*m.r*0.14;
+      ctx.beginPath();ctx.arc(m.x+lookA,ey+1,m.r*0.2,0,6.283);ctx.fill();
+    }else if(lk==='twin'){
+      for(const off of [-0.5,0.5]){
+        ctx.fillStyle='#fff';
+        ctx.beginPath();ctx.arc(m.x+m.r*off-m.r*0.18,ey,m.r*0.16,0,6.283);ctx.fill();
+        ctx.beginPath();ctx.arc(m.x+m.r*off+m.r*0.18,ey,m.r*0.16,0,6.283);ctx.fill();
+        ctx.fillStyle='#1a1a22';
+        ctx.beginPath();ctx.arc(m.x+m.r*off-m.r*0.18,ey+1,m.r*0.08,0,6.283);ctx.fill();
+        ctx.beginPath();ctx.arc(m.x+m.r*off+m.r*0.18,ey+1,m.r*0.08,0,6.283);ctx.fill();}
+    }else{
+      ctx.fillStyle='#fff';
+      ctx.beginPath();ctx.arc(m.x-m.r*0.32,ey,m.r*0.22,0,6.283);ctx.fill();
+      ctx.beginPath();ctx.arc(m.x+m.r*0.32,ey,m.r*0.22,0,6.283);ctx.fill();
+      ctx.fillStyle='#1a1a22';
+      ctx.beginPath();ctx.arc(m.x-m.r*0.32,ey+1,m.r*0.1,0,6.283);ctx.fill();
+      ctx.beginPath();ctx.arc(m.x+m.r*0.32,ey+1,m.r*0.1,0,6.283);ctx.fill();
+    }
+    if(B&&lk!=='eye'){/* angry brows */
+      ctx.strokeStyle='#1a1a22';ctx.lineWidth=2.5;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(m.x-m.r*0.52,m.y-m.r*0.42);ctx.lineTo(m.x-m.r*0.14,m.y-m.r*0.26);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(m.x+m.r*0.52,m.y-m.r*0.42);ctx.lineTo(m.x+m.r*0.14,m.y-m.r*0.26);ctx.stroke();
+    }
+    if(lk==='ghost')ctx.globalAlpha=1;
     if(m.maxhp>1){
       ctx.fillStyle='#222';ctx.fillRect(m.x-10,m.y-m.r-9,20,3);
       ctx.fillStyle='#7dffa0';ctx.fillRect(m.x-10,m.y-m.r-9,20*Math.max(0,m.hp)/m.maxhp,3);
@@ -1990,6 +2161,7 @@ function drawRush(t){
   if(rush.freezeT>0)wtxt+=' · ❄'+Math.ceil(rush.freezeT);
   if(rush.magnetT>0)wtxt+=' · 🧲'+Math.ceil(rush.magnetT);
   if(rush.zapT>0)wtxt+=' · ⚡'+Math.ceil(rush.zapT);
+  if(rush.eggsGot)wtxt+='  🥚'+rush.eggsGot;
   for(const pk in rush.perks)if(rush.perks[pk])wtxt+='  '+PERKS[pk].e+(rush.perks[pk]>1?'×'+rush.perks[pk]:'');
   ctx.fillText(wtxt,11,H*0.70+1);
   ctx.fillStyle=goldOn();
@@ -3566,17 +3738,23 @@ function buildGuide(){
       '<div style="color:var(--dim);font-size:12px;line-height:1.35;">'+
       (known?desc:'Keep playing to discover this.')+'</div></div>';
     list.appendChild(d);};
+  /* The guide follows the mode: knot mechanics & abilities during knots,
+     bestiary & pickups during rush — no cross-mode noise. */
+  const rushMode=state==='rush';
+  if(!rushMode){
   sec('KNOT MECHANICS');
-  for(const k in MECH){if(k.indexOf('ab_')===0)continue;
+  for(const k in MECH){if(k.indexOf('ab_')===0||k==='rush')continue;
     row(MECH[k].icon,MECH[k].name,MECH[k].desc,!!save.seen[k]);}
   sec('ABILITIES');
   for(const k in MECH){if(k.indexOf('ab_')!==0)continue;
     row(MECH[k].icon,MECH[k].name,MECH[k].desc,!!save.seen[k]);}
+  return;}
+  row(MECH.rush.icon,MECH.rush.name,MECH.rush.desc,true);
   sec('RUSH BESTIARY');
   row('🟣','Blob','Slow and squishy. One hit.',true);
   row('🟠','Runner','Fast! One hit — if you can catch it.',true);
   row('🔵','Brute','Tanky. Three hits, drops scrap often.',true);
-  row('🔴','Boss','Every 5th wave. Huge health, always drops scrap — sometimes eggs.',true);
+  row('🔴','Bosses','Every 5th wave a unique boss leads the charge — twenty in all, from GNARL the Tangled at wave 5 to OMEGA the Last Knot at wave 100. Big health, always scrap, sometimes eggs.',true);
   sec('RUSH PICKUPS');
   row('⚙','Scrap','Tap to collect. Fills the gauge that upgrades your side towers.',true);
   row('💣','Bomb','Tap to detonate. Lands above your line and waits 5 seconds.',true);
