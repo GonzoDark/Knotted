@@ -1,1 +1,2 @@
 # Knotted
+A fun game.
